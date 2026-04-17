@@ -167,15 +167,6 @@ function parseByColumnLayout(lines: TextLine[], fallbackYear?: number): ParsedTr
 
   if (headerIdx === -1) return []
 
-  const header = lines[headerIdx]
-  const headerLower = header.text.toLowerCase()
-
-  const dateXRange = findColumnX(header.items, ['date'])
-  const descXRange = findColumnX(header.items, ['description', 'details', 'memo', 'transaction', 'payee'])
-  const amountXRange = findColumnX(header.items, ['amount'])
-  const debitXRange = findColumnX(header.items, ['debit', 'withdrawal', 'charge'])
-  const creditXRange = findColumnX(header.items, ['credit', 'deposit'])
-
   const transactions: ParsedTransaction[] = []
 
   for (let i = headerIdx + 1; i < lines.length; i++) {
