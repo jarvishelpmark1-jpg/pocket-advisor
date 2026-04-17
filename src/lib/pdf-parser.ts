@@ -303,16 +303,6 @@ function parseByAmountAtEnd(lines: TextLine[], fallbackYear?: number): ParsedTra
   return transactions
 }
 
-function findColumnX(items: TextItem[], keywords: string[]): { min: number; max: number } | null {
-  for (const item of items) {
-    const lower = item.str.toLowerCase()
-    if (keywords.some(k => lower.includes(k))) {
-      return { min: item.x - 5, max: item.x + item.width + 50 }
-    }
-  }
-  return null
-}
-
 function cleanPdfDescription(desc: string): string {
   return desc
     .replace(/\s+/g, ' ')
