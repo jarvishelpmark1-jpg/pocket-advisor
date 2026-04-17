@@ -12,6 +12,7 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
     onDrop,
     accept: {
       'text/csv': ['.csv'],
+      'application/pdf': ['.pdf'],
       'application/x-ofx': ['.ofx'],
       'application/x-qfx': ['.qfx'],
     },
@@ -51,11 +52,11 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
         {isDragActive ? 'Drop it here' : 'Upload a statement'}
       </p>
       <p className="text-text-muted text-xs">
-        Drag & drop or tap to select a CSV, OFX, or QFX file
+        Drag & drop or tap to select a PDF, CSV, OFX, or QFX file
       </p>
 
       <div className="flex gap-2 mt-4">
-        {['CSV', 'OFX', 'QFX'].map((ext) => (
+        {['PDF', 'CSV', 'OFX', 'QFX'].map((ext) => (
           <span
             key={ext}
             className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-bg-elevated text-text-muted"

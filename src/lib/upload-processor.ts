@@ -1,7 +1,8 @@
 import { db } from './db'
 import { parseCSV, parseOFX, detectFileType } from './parser'
+import { parsePDF } from './pdf-parser'
 import { classifyTransaction } from './classifier'
-import type { Transaction, UploadResult } from './types'
+import type { Transaction, UploadResult, ParsedTransaction } from './types'
 
 const AUTO_CLASSIFY_THRESHOLD = 0.55
 
@@ -10,20 +11,32 @@ export async function processUpload(
   accountId: number,
   onProgress?: (pct: number) => void
 ): Promise<UploadResult> {
-  const content = await file.text()
-  const fileType = detectFileType(file.name, content)
+  const fileType = detectFileType(file.name)
 
-  let parsed
-  if (fileType === 'csv') {
-    parsed = parseCSV(content)
-  } else if (fileType === 'ofx') {
-    parsed = parseOFX(content)
+  let parsed: ParsedTransaction[]
+
+  if (fileType === 'pdf') {
+    onProgress?.(5)
+    const buffer = await file.arrayBuffer()
+    parsed = await parsePDF(buffer)
   } else {
-    throw new Error('Unsupported file format. Please upload a CSV or OFX/QFX file.')
+    const content = await file.text()
+    const confirmedType = detectFileType(file.name, content)
+    if (confirmedType === 'csv') {
+      parsed = parseCSV(content)
+    } else if (confirmedType === 'ofx') {
+      parsed = parseOFX(content)
+    } else {
+      throw new Error('Unsupported file format. Please upload a PDF, CSV, or OFX/QFX file.')
+    }
   }
 
   if (parsed.length === 0) {
-    throw new Error('No transactions found in this file. Please check the format.')
+    throw new Error(
+      fileType === 'pdf'
+        ? 'Could not extract transactions from this PDF. The statement format may not be supported yet, or the PDF may be image-based (scanned). Try downloading a CSV from your bank instead.'
+        : 'No transactions found in this file. Please check the format.'
+    )
   }
 
   const upload = await db.uploads.add({
@@ -44,7 +57,7 @@ export async function processUpload(
 
   for (let i = 0; i < parsed.length; i++) {
     const p = parsed[i]
-    onProgress?.(Math.round(((i + 1) / parsed.length) * 100))
+    onProgress?.(Math.round(10 + ((i + 1) / parsed.length) * 85))
 
     const existing = await db.transactions
       .where('[accountId+date+amount+description]')
@@ -82,6 +95,8 @@ export async function processUpload(
     if (isAutoClassified) autoClassified++
     else needsReview++
   }
+
+  onProgress?.(98)
 
   const dates = transactions.map(t => t.date.getTime()).filter(d => !isNaN(d))
   const periodStart = dates.length > 0 ? new Date(Math.min(...dates)) : null

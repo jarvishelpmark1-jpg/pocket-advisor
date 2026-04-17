@@ -226,11 +226,14 @@ export function parseOFX(content: string): ParsedTransaction[] {
   return transactions
 }
 
-export function detectFileType(filename: string, content: string): 'csv' | 'ofx' | 'unknown' {
+export function detectFileType(filename: string, content?: string): 'csv' | 'ofx' | 'pdf' | 'unknown' {
   const ext = filename.toLowerCase().split('.').pop()
+  if (ext === 'pdf') return 'pdf'
   if (ext === 'ofx' || ext === 'qfx') return 'ofx'
   if (ext === 'csv') return 'csv'
-  if (content.includes('<OFX>') || content.includes('OFXHEADER')) return 'ofx'
-  if (content.includes(',') && content.split('\n').length > 1) return 'csv'
+  if (content) {
+    if (content.includes('<OFX>') || content.includes('OFXHEADER')) return 'ofx'
+    if (content.includes(',') && content.split('\n').length > 1) return 'csv'
+  }
   return 'unknown'
 }

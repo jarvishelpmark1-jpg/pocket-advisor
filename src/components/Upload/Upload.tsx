@@ -66,7 +66,7 @@ export function UploadPage() {
     <div className="min-h-full pb-4">
       <div className="px-4 pt-14 pb-4">
         <h1 className="text-text-primary text-lg font-bold">Upload Statement</h1>
-        <p className="text-text-muted text-xs mt-0.5">CSV, OFX, or QFX files from your bank</p>
+        <p className="text-text-muted text-xs mt-0.5">PDF, CSV, OFX, or QFX statements from your bank</p>
       </div>
 
       <div className="px-4 space-y-4">
