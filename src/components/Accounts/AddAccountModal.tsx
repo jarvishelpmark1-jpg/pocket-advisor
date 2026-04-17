@@ -138,7 +138,7 @@ export function AddAccountModal({
   )
 }
 
-function Field({ label, children, placeholder }: { label: string; children: React.ReactNode; placeholder?: string }) {
+function Field({ label, children }: { label: string; children: React.ReactNode; placeholder?: string }) {
   return (
     <div>
       <label className="text-text-muted text-[10px] font-medium uppercase tracking-wider mb-1.5 block">

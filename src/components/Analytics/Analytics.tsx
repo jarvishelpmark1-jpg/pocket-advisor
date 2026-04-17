@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { format, subMonths } from 'date-fns'
+import { subMonths } from 'date-fns'
 import { ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'

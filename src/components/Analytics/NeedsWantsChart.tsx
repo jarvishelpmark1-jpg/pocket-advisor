@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getNeedsWantsSavings, getMonthlyTotals } from '../../lib/analytics'
-import { formatCurrency, formatPercent } from '../../lib/formatters'
+import { formatCurrency } from '../../lib/formatters'
 import { Card, CardHeader } from '../shared/Card'
 
 export function NeedsWantsChart({ month }: { month: string }) {

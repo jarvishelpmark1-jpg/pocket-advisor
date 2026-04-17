@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Repeat, AlertTriangle } from 'lucide-react'
+import { Repeat } from 'lucide-react'
 import { detectRecurring } from '../../lib/analytics'
 import { formatCurrency, formatDate } from '../../lib/formatters'
 import { getCategoryName, getCategoryColor } from '../../lib/categories'

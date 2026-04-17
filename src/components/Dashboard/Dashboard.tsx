@@ -20,7 +20,6 @@ export function Dashboard() {
   const navigate = useNavigate()
 
   const txnCount = useLiveQuery(() => db.transactions.count())
-  const accountCount = useLiveQuery(() => db.accounts.count())
 
   const prevMonth = () => {
     const d = new Date(currentMonth + '-01')

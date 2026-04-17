@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Wallet, CreditCard, PiggyBank, TrendingUp, Building, Trash2 } from 'lucide-react'
+import { Plus, Wallet, CreditCard, PiggyBank, TrendingUp, Building } from 'lucide-react'
 import { db } from '../../lib/db'
 import { formatCurrency } from '../../lib/formatters'
 import { Card } from '../shared/Card'

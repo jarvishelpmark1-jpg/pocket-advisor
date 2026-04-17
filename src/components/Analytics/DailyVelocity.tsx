@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts'
-import { getSpendingVelocity, getMonthlyTotals } from '../../lib/analytics'
+import { getSpendingVelocity } from '../../lib/analytics'
 import { formatCurrency } from '../../lib/formatters'
 import { Card, CardHeader } from '../shared/Card'
 import { format, parseISO, getDaysInMonth } from 'date-fns'
@@ -46,8 +46,8 @@ export function DailyVelocity({ month }: { month: string }) {
                 fontSize: 11,
                 color: '#F9FAFB',
               }}
-              formatter={(value: number) => formatCurrency(value)}
-              labelFormatter={(d) => format(parseISO(d as string), 'MMM d')}
+              formatter={(value: unknown) => formatCurrency(Number(value))}
+              labelFormatter={(d: unknown) => format(parseISO(String(d)), 'MMM d')}
             />
             <Bar dataKey="amount" radius={[3, 3, 0, 0]} maxBarSize={12}>
               {data.map((entry, i) => (

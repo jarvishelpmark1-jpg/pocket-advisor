@@ -19,12 +19,11 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
     multiple: false,
   })
 
-  const { onDrag: _onDrag, onDragStart: _onDragStart, onDragEnd: _onDragEnd, ...rootProps } = getRootProps() as Record<string, unknown>
+  const rootProps = getRootProps()
 
   return (
-    <motion.div
-      {...rootProps as React.HTMLAttributes<HTMLDivElement>}
-      whileTap={{ scale: 0.98 }}
+    <div
+      {...rootProps}
       className={`
         relative overflow-hidden rounded-2xl border-2 border-dashed p-8
         flex flex-col items-center justify-center text-center
@@ -65,6 +64,6 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
           </span>
         ))}
       </div>
-    </motion.div>
+    </div>
   )
 }
