@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
-import type { Transaction, CategoryId } from '../lib/types'
+import type { CategoryId } from '../lib/types'
 import { startOfMonth, endOfMonth, parseISO } from 'date-fns'
 
 export function useTransactions(month?: string) {

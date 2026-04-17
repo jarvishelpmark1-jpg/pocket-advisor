@@ -220,7 +220,15 @@ export async function saveMonthlySnapshot(month: string): Promise<void> {
   }
 
   if (existing) {
-    await db.monthlySnapshots.update(existing.id!, snapshot)
+    await db.monthlySnapshots.update(existing.id!, {
+      totalIncome: snapshot.totalIncome,
+      totalExpenses: snapshot.totalExpenses,
+      totalSavings: snapshot.totalSavings,
+      savingsRate: snapshot.savingsRate,
+      netWorth: snapshot.netWorth,
+      categoryBreakdown: snapshot.categoryBreakdown,
+      createdAt: snapshot.createdAt,
+    })
   } else {
     await db.monthlySnapshots.add(snapshot)
   }

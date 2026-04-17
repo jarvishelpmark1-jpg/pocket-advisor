@@ -46,8 +46,8 @@ export function MonthlyTrendChart() {
                 fontSize: 12,
                 color: '#F9FAFB',
               }}
-              formatter={(value: number) => formatCurrency(value)}
-              labelFormatter={formatMonthShort}
+              formatter={(value: unknown) => formatCurrency(Number(value))}
+              labelFormatter={(label: unknown) => formatMonthShort(String(label))}
             />
             <Area
               type="monotone"

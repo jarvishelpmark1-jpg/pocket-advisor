@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react'
-import { Search, Filter, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { format, subMonths } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
 import { getMonthKey } from '../../lib/analytics'
 import { formatCurrency, formatDate, cleanDescription, formatMonthLong } from '../../lib/formatters'
-import { getCategoryName, getCategoryColor, CATEGORIES } from '../../lib/categories'
+import { getCategoryName, getCategoryColor } from '../../lib/categories'
 import { Card } from '../shared/Card'
 import { EmptyState } from '../shared/EmptyState'
 import { Modal } from '../shared/Modal'
@@ -17,7 +17,7 @@ import type { Transaction, CategoryId } from '../../lib/types'
 export function TransactionsPage() {
   const [currentMonth, setCurrentMonth] = useState(getMonthKey(new Date()))
   const [search, setSearch] = useState('')
-  const [filterCategory, setFilterCategory] = useState<CategoryId | 'all'>('all')
+  const [filterCategory] = useState<CategoryId | 'all'>('all')
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
   const [editing, setEditing] = useState<Transaction | null>(null)
 

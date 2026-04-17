@@ -88,7 +88,7 @@ async function classifyByUserRules(description: string): Promise<ClassificationR
   return null
 }
 
-function isLikelyTransfer(description: string, amount: number): boolean {
+function isLikelyTransfer(description: string): boolean {
   const upper = description.toUpperCase()
   const transferPatterns = [
     /TRANSFER/i, /XFER/i, /TFR/i, /ONLINE\s*TRANSFER/i,
@@ -130,7 +130,7 @@ export async function classifyTransaction(
 
   if (userResult) return userResult
 
-  if (isLikelyTransfer(desc, txn.amount)) {
+  if (isLikelyTransfer(desc)) {
     return { categoryId: 'transfer', confidence: 0.75, source: 'pattern', merchantName: null }
   }
 

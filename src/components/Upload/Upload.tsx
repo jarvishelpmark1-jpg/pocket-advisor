@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Upload as UploadIcon, Plus, FileText, Clock, CheckCircle } from 'lucide-react'
+import { Plus, FileText, Clock, CheckCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { db } from '../../lib/db'
 import { DropZone } from './DropZone'

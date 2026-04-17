@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { CheckCircle2, AlertTriangle, Copy, ArrowRight } from 'lucide-react'
+import { CheckCircle2, Copy, ArrowRight } from 'lucide-react'
 import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
 import type { UploadResult } from '../../lib/types'
