@@ -35,7 +35,7 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
         }
       `}
     >
-      <input {...getInputProps()} />
+      <input {...getInputProps()} aria-label="Upload bank statement file" />
 
       <motion.div
         animate={{ y: isDragActive ? -4 : 0 }}

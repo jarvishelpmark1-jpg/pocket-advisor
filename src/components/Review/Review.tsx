@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, ListChecks, Layers } from 'lucide-react'
 import { useUnreviewedTransactions } from '../../hooks/useTransactions'
@@ -6,26 +6,17 @@ import { ReviewCard } from './ReviewCard'
 import { CategoryGrid } from './CategoryGrid'
 import { EmptyState } from '../shared/EmptyState'
 import { ProgressBar } from '../shared/ProgressBar'
+import { useToast } from '../../hooks/useToast'
 import { formatCurrency } from '../../lib/formatters'
 import type { Transaction, CategoryId } from '../../lib/types'
 import { updateTransactionCategory, batchUpdateCategory } from '../../hooks/useTransactions'
-
-interface Toast {
-  message: string
-  key: number
-}
 
 export function ReviewPage() {
   const transactions = useUnreviewedTransactions()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [mode, setMode] = useState<'single' | 'batch'>('single')
   const [completedCount, setCompletedCount] = useState(0)
-  const [toast, setToast] = useState<Toast | null>(null)
-
-  const showToast = useCallback((message: string) => {
-    setToast({ message, key: Date.now() })
-    setTimeout(() => setToast(null), 3000)
-  }, [])
+  const { toast } = useToast()
 
   const grouped = useMemo(() => {
     if (!transactions) return []
@@ -68,7 +59,7 @@ export function ReviewPage() {
     setCompletedCount(c => c + thisSession)
 
     if (alsoApplied > 0) {
-      showToast(`Also applied to ${alsoApplied} similar transaction${alsoApplied > 1 ? 's' : ''}`)
+      toast(`Also applied to ${alsoApplied} similar transaction${alsoApplied > 1 ? 's' : ''}`)
     }
 
     if (mode === 'single' && currentIdx >= transactions.length - 1) {
@@ -83,7 +74,7 @@ export function ReviewPage() {
     setCompletedCount(c => c + thisSession)
 
     if (alsoApplied > 0) {
-      showToast(`Also applied to ${alsoApplied} similar transaction${alsoApplied > 1 ? 's' : ''}`)
+      toast(`Also applied to ${alsoApplied} similar transaction${alsoApplied > 1 ? 's' : ''}`)
     }
   }
 
@@ -171,21 +162,6 @@ export function ReviewPage() {
         )}
       </div>
 
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            key={toast.key}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 left-4 right-4 flex justify-center pointer-events-none z-50"
-          >
-            <div className="bg-emerald-600 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg">
-              {toast.message}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

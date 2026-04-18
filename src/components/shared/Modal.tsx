@@ -19,7 +19,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label={title}>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -39,6 +39,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-lg hover:bg-bg-elevated text-text-muted"
+                aria-label="Close"
               >
                 <X size={18} />
               </button>

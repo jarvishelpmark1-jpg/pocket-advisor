@@ -13,6 +13,8 @@ import { formatCurrency } from '../../lib/formatters'
 import { CATEGORIES } from '../../lib/categories'
 import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
+import { ConfirmDialog } from '../shared/ConfirmDialog'
+import { useToast } from '../../hooks/useToast'
 import { AddAccountModal } from '../Accounts/AddAccountModal'
 import { EditBalanceModal } from '../Accounts/EditBalanceModal'
 import type { Account, AccountType, CategoryId } from '../../lib/types'
@@ -37,33 +39,39 @@ const TYPE_LABELS: Record<AccountType, string> = {
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
+  const { toast } = useToast()
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [showBudgets, setShowBudgets] = useState(false)
-  const [importStatus, setImportStatus] = useState<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; count: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) ?? []
   const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const ruleCount = useLiveQuery(() => db.userRules.count()) ?? 0
 
-  const deleteAccount = async (id: number) => {
+  const handleDeleteAccount = async (id: number) => {
     const count = await db.transactions.where('accountId').equals(id).count()
     if (count > 0) {
-      if (!confirm(`This account has ${count} transactions. Delete them too?`)) return
-      await db.transactions.where('accountId').equals(id).delete()
+      setConfirmDelete({ id, count })
+    } else {
+      await db.accounts.delete(id)
+      setEditingAccount(null)
+      toast('Account deleted')
     }
-    await db.accounts.delete(id)
   }
 
   const handleExportBackup = async () => {
     const json = await exportBackup()
     downloadFile(json, `pocket-advisor-backup-${new Date().toISOString().split('T')[0]}.json`, 'application/json')
+    toast('Backup downloaded')
   }
 
   const handleExportCSV = async () => {
     const csv = await exportTransactionsCSV()
     downloadFile(csv, `transactions-${new Date().toISOString().split('T')[0]}.csv`, 'text/csv')
+    toast('CSV exported')
   }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,19 +80,17 @@ export function SettingsPage() {
     try {
       const text = await file.text()
       const result = await importBackup(text)
-      setImportStatus(`Restored ${result.accounts} accounts and ${result.transactions} transactions`)
-      setTimeout(() => setImportStatus(null), 4000)
+      toast(`Restored ${result.accounts} accounts and ${result.transactions} transactions`)
     } catch {
-      setImportStatus('Import failed — invalid backup file')
-      setTimeout(() => setImportStatus(null), 4000)
+      toast('Import failed — invalid backup file', 'error')
     }
     e.target.value = ''
   }
 
   const handleClearAll = async () => {
-    if (!confirm('Delete ALL data? This removes every account, transaction, upload, and learned rule.')) return
-    if (!confirm('Are you absolutely sure? This cannot be undone.')) return
     await clearAllData()
+    setConfirmClear(false)
+    toast('All data cleared')
   }
 
   return (
@@ -95,9 +101,8 @@ export function SettingsPage() {
       </div>
 
       <div className="px-4 space-y-6">
-        {/* Appearance */}
         <Section icon={<Palette size={16} />} title="Appearance">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Theme">
             {([
               { value: 'light' as const, icon: Sun, label: 'Light' },
               { value: 'dark' as const, icon: Moon, label: 'Dark' },
@@ -106,6 +111,8 @@ export function SettingsPage() {
               <button
                 key={value}
                 onClick={() => setTheme(value)}
+                role="radio"
+                aria-checked={theme === value}
                 className={`flex flex-col items-center gap-1.5 p-3 rounded-xl transition-colors ${
                   theme === value
                     ? 'bg-accent/15 border border-accent/30 text-accent'
@@ -119,7 +126,6 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        {/* Accounts */}
         <Section icon={<Wallet size={16} />} title="Accounts">
           {accounts.length === 0 ? (
             <p className="text-text-muted text-xs py-2">No accounts yet</p>
@@ -132,6 +138,7 @@ export function SettingsPage() {
                     key={account.id}
                     onClick={() => setEditingAccount(account)}
                     className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-bg-elevated transition-colors text-left"
+                    aria-label={`${account.name}, ${TYPE_LABELS[account.type]}, ${formatCurrency(Math.abs(account.balance))}`}
                   >
                     <div
                       className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -164,12 +171,10 @@ export function SettingsPage() {
           </Button>
         </Section>
 
-        {/* Budget */}
         <Section icon={<DollarSign size={16} />} title="Monthly Budget">
-          <BudgetSection show={showBudgets} onToggle={() => setShowBudgets(!showBudgets)} />
+          <BudgetSection show={showBudgets} onToggle={() => setShowBudgets(!showBudgets)} onSave={() => toast('Budget saved')} />
         </Section>
 
-        {/* Data Management */}
         <Section icon={<Database size={16} />} title="Data">
           <div className="space-y-2">
             <p className="text-text-muted text-[11px]">
@@ -189,19 +194,10 @@ export function SettingsPage() {
               Export CSV
             </Button>
 
-            {importStatus && (
-              <p className={`text-xs px-2 py-1.5 rounded-lg ${
-                importStatus.includes('failed') ? 'bg-expense/10 text-expense' : 'bg-income/10 text-income'
-              }`}>
-                {importStatus}
-              </p>
-            )}
-
-            <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" aria-label="Import backup file" />
           </div>
         </Section>
 
-        {/* About */}
         <Section icon={<Shield size={16} />} title="About">
           <div className="space-y-1.5">
             <p className="text-text-muted text-xs">Pocket Advisor v1.0.0</p>
@@ -211,10 +207,9 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        {/* Danger Zone */}
         <div className="pt-4 border-t border-border">
           <button
-            onClick={handleClearAll}
+            onClick={() => setConfirmClear(true)}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-expense/10 border border-expense/20 text-expense text-sm font-medium active:scale-[0.98] transition-transform"
           >
             <Trash2 size={16} />
@@ -223,36 +218,61 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <AddAccountModal open={showAddAccount} onClose={() => setShowAddAccount(false)} onSave={() => setShowAddAccount(false)} />
+      <AddAccountModal open={showAddAccount} onClose={() => setShowAddAccount(false)} onSave={() => { setShowAddAccount(false); toast('Account added') }} />
 
       {editingAccount && (
         <EditBalanceModal
           account={editingAccount}
           open={!!editingAccount}
           onClose={() => setEditingAccount(null)}
-          onDelete={() => {
-            deleteAccount(editingAccount.id!)
-            setEditingAccount(null)
-          }}
+          onDelete={() => handleDeleteAccount(editingAccount.id!)}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear All Data"
+        message="This permanently removes every account, transaction, upload, and learned rule. This cannot be undone."
+        confirmLabel="Clear Everything"
+        variant="danger"
+        onConfirm={handleClearAll}
+        onCancel={() => setConfirmClear(false)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Account"
+        message={`This account has ${confirmDelete?.count ?? 0} transactions. They will be deleted too.`}
+        confirmLabel="Delete Account"
+        variant="danger"
+        onConfirm={async () => {
+          if (confirmDelete) {
+            await db.transactions.where('accountId').equals(confirmDelete.id).delete()
+            await db.accounts.delete(confirmDelete.id)
+            setConfirmDelete(null)
+            setEditingAccount(null)
+            toast('Account and transactions deleted')
+          }
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   )
 }
 
 function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div>
+    <section aria-label={title}>
       <div className="flex items-center gap-2 mb-3">
         <span className="text-text-muted">{icon}</span>
         <h2 className="text-text-primary text-sm font-semibold">{title}</h2>
       </div>
       <Card padding="sm">{children}</Card>
-    </div>
+    </section>
   )
 }
 
-function BudgetSection({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+function BudgetSection({ show, onToggle, onSave }: { show: boolean; onToggle: () => void; onSave: () => void }) {
   const settings = getSettings()
   const [monthlyBudget, setMonthlyBudget] = useState(settings.monthlyBudget.toString())
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, string>>(() => {
@@ -275,44 +295,48 @@ function BudgetSection({ show, onToggle }: { show: boolean; onToggle: () => void
       monthlyBudget: parseFloat(monthlyBudget) || 0,
       budgets,
     })
+    onSave()
   }
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1">
-          <label className="text-text-muted text-[10px] font-medium uppercase tracking-wider mb-1 block">
-            Total Monthly Budget
-          </label>
-          <input
-            value={monthlyBudget}
-            onChange={(e) => setMonthlyBudget(e.target.value)}
-            onBlur={handleSave}
-            className="w-full bg-bg-elevated border border-border rounded-xl px-3 py-2 text-text-primary text-sm font-mono focus:border-accent focus:outline-none"
-            placeholder="0.00"
-            type="number"
-            step="100"
-          />
-        </div>
+      <div className="mb-3">
+        <label className="text-text-muted text-[10px] font-medium uppercase tracking-wider mb-1 block" htmlFor="monthly-budget">
+          Total Monthly Budget
+        </label>
+        <input
+          id="monthly-budget"
+          value={monthlyBudget}
+          onChange={(e) => setMonthlyBudget(e.target.value)}
+          onBlur={handleSave}
+          className="w-full bg-bg-elevated border border-border rounded-xl px-3 py-2 text-text-primary text-sm font-mono focus:border-accent focus:outline-none"
+          placeholder="0.00"
+          type="number"
+          step="100"
+          inputMode="decimal"
+        />
       </div>
 
       <button
         onClick={onToggle}
         className="text-accent text-xs font-medium mb-2"
+        aria-expanded={show}
       >
         {show ? 'Hide' : 'Set'} category budgets
       </button>
 
       {show && (
-        <div className="space-y-2 mt-2 max-h-64 overflow-y-auto">
+        <div className="space-y-2 mt-2 max-h-64 overflow-y-auto" role="list">
           {expenseCategories.map((cat) => (
-            <div key={cat.id} className="flex items-center gap-2">
+            <div key={cat.id} className="flex items-center gap-2" role="listitem">
               <div
                 className="w-3 h-3 rounded-full flex-shrink-0"
                 style={{ backgroundColor: cat.color }}
+                aria-hidden="true"
               />
-              <span className="text-text-secondary text-xs flex-1 truncate">{cat.name}</span>
+              <label htmlFor={`budget-${cat.id}`} className="text-text-secondary text-xs flex-1 truncate">{cat.name}</label>
               <input
+                id={`budget-${cat.id}`}
                 value={categoryBudgets[cat.id] || ''}
                 onChange={(e) => setCategoryBudgets(prev => ({ ...prev, [cat.id]: e.target.value }))}
                 onBlur={handleSave}
@@ -320,6 +344,7 @@ function BudgetSection({ show, onToggle }: { show: boolean; onToggle: () => void
                 placeholder="—"
                 type="number"
                 step="10"
+                inputMode="decimal"
               />
             </div>
           ))}

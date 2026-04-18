@@ -8,6 +8,8 @@ import { DropZone } from './DropZone'
 import { ProcessingView } from './ProcessingView'
 import { UploadResults } from './UploadResults'
 import { Card } from '../shared/Card'
+import { ConfirmDialog } from '../shared/ConfirmDialog'
+import { useToast } from '../../hooks/useToast'
 import type { Account, UploadResult } from '../../lib/types'
 
 const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#06B6D4']
@@ -19,6 +21,8 @@ export function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
   const [result, setResult] = useState<UploadResult | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const { toast } = useToast()
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) ?? []
   const uploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
@@ -77,9 +81,10 @@ export function UploadPage() {
   }
 
   const handleClearAll = async () => {
-    if (!confirm('Clear all data and start fresh? This removes everything.')) return
     await clearAllData()
     handleReset()
+    setConfirmClear(false)
+    toast('All data cleared')
   }
 
   return (
@@ -92,8 +97,9 @@ export function UploadPage() {
           </div>
           {txnCount > 0 && phase === 'idle' && (
             <button
-              onClick={handleClearAll}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-400 text-[11px] font-medium bg-red-500/10 active:scale-95 transition-transform"
+              onClick={() => setConfirmClear(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-expense text-[11px] font-medium bg-expense/10 active:scale-95 transition-transform"
+              aria-label="Clear all data and start fresh"
             >
               <Trash2 size={12} />
               Start Fresh
@@ -168,6 +174,16 @@ export function UploadPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Start Fresh"
+        message="This removes all accounts, transactions, uploads, and learned rules. You cannot undo this."
+        confirmLabel="Clear Everything"
+        variant="danger"
+        onConfirm={handleClearAll}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   )
 }
