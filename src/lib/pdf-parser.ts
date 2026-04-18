@@ -66,7 +66,7 @@ async function extractTextFromPDF(data: ArrayBuffer): Promise<TextLine[][]> {
   return allPages
 }
 
-const DATE_PATTERN = /\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/
+const DATE_PATTERN = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/
 const MONEY_PATTERN = /\$?\s*-?\(?\d{1,3}(?:,\d{3})*\.\d{2}\)?/
 const AMOUNT_EXTRACT = /[($]*(\d{1,3}(?:,\d{3})*\.\d{2})\)?/
 
@@ -93,7 +93,7 @@ function parseDateStr(s: string, fallbackYear?: number): Date | null {
 
 function detectStatementYear(lines: TextLine[]): number | undefined {
   for (const line of lines.slice(0, 30)) {
-    const yearMatch = line.text.match(/(?:statement|period|through|ending|closing).*?(\d{1,2}[\/\-]\d{1,2}[\/\-](\d{4}))/i)
+    const yearMatch = line.text.match(/(?:statement|period|through|ending|closing).*?(\d{1,2}[/-]\d{1,2}[/-](\d{4}))/i)
     if (yearMatch) return parseInt(yearMatch[2])
 
     const standaloneYear = line.text.match(/\b(20\d{2})\b/)
@@ -227,7 +227,7 @@ function parseByLinePattern(lines: TextLine[], fallbackYear?: number): ParsedTra
     const line = lines[i]
     if (isNoiseLine(line.text)) continue
 
-    const dateMatch = line.text.match(/^(\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?)/)
+    const dateMatch = line.text.match(/^(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)/)
     if (!dateMatch) continue
 
     const date = parseDateStr(dateMatch[1], fallbackYear)
@@ -285,7 +285,7 @@ function parseByAmountAtEnd(lines: TextLine[], fallbackYear?: number): ParsedTra
     if (isNoiseLine(line.text)) continue
 
     const text = line.text
-    const amountMatch = text.match(/([($\-]?\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}\)?)\s*$/)
+    const amountMatch = text.match(/([($-]?\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}\)?)\s*$/)
     if (!amountMatch) continue
 
     const beforeAmount = text.slice(0, text.length - amountMatch[0].length).trim()

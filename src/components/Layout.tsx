@@ -6,7 +6,7 @@ import {
   Upload,
   ListChecks,
   BarChart3,
-  Wallet,
+  Settings,
 } from 'lucide-react'
 import { useReviewCount } from '../hooks/useTransactions'
 
@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { path: '/upload', icon: Upload, label: 'Upload' },
   { path: '/review', icon: ListChecks, label: 'Review' },
   { path: '/analytics', icon: BarChart3, label: 'Insights' },
-  { path: '/accounts', icon: Wallet, label: 'Accounts' },
+  { path: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -29,7 +29,11 @@ export function Layout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      <nav className="flex-shrink-0 bg-bg-secondary/80 backdrop-blur-xl border-t border-border safe-bottom">
+      <nav
+        className="flex-shrink-0 bg-bg-secondary/80 backdrop-blur-xl border-t border-border safe-bottom"
+        role="navigation"
+        aria-label="Main navigation"
+      >
         <div className="flex items-center justify-around px-2 pt-2 pb-1 max-w-lg mx-auto">
           {NAV_ITEMS.map((item) => {
             const isActive = location.pathname === item.path
@@ -41,6 +45,8 @@ export function Layout({ children }: { children: ReactNode }) {
                 key={item.path}
                 onClick={() => navigate(item.path)}
                 className="relative flex flex-col items-center gap-0.5 py-1 px-3 min-w-[56px]"
+                aria-label={`${item.label}${showBadge ? `, ${reviewCount} items need review` : ''}`}
+                aria-current={isActive ? 'page' : undefined}
               >
                 <div className="relative">
                   <Icon

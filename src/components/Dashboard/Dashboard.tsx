@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { subMonths } from 'date-fns'
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Settings, Upload } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
 import { getMonthKey } from '../../lib/analytics'
@@ -10,6 +10,7 @@ import { NetWorthCard } from './NetWorthCard'
 import { CashFlowCard } from './CashFlowCard'
 import { SpendingDonut } from './SpendingDonut'
 import { SavingsRateCard } from './SavingsRateCard'
+import { BudgetCard } from './BudgetCard'
 import { RecentTransactions } from './RecentTransactions'
 import { MonthlyTrendChart } from './MonthlyTrendChart'
 import { QuickActions } from './QuickActions'
@@ -40,7 +41,7 @@ export function Dashboard() {
         <Header />
         <div className="flex-1 flex items-center justify-center px-4">
           <EmptyState
-            icon={<Sparkles size={28} />}
+            icon={<Upload size={28} />}
             title="Welcome to Pocket Advisor"
             description="Upload your first bank or credit card statement to get started with smart financial insights."
             action={
@@ -62,7 +63,7 @@ export function Dashboard() {
       <Header />
 
       <div className="px-4 mb-4 flex items-center justify-between">
-        <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-bg-elevated text-text-muted">
+        <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-bg-elevated text-text-muted" aria-label="Previous month">
           <ChevronLeft size={18} />
         </button>
         <h2 className="text-text-primary font-semibold text-sm">{formatMonthLong(currentMonth)}</h2>
@@ -70,6 +71,7 @@ export function Dashboard() {
           onClick={nextMonth}
           disabled={isCurrentMonth}
           className="p-2 rounded-lg hover:bg-bg-elevated text-text-muted disabled:opacity-20"
+          aria-label="Next month"
         >
           <ChevronRight size={18} />
         </button>
@@ -82,6 +84,7 @@ export function Dashboard() {
           <SavingsRateCard month={currentMonth} />
           <QuickActions />
         </div>
+        <BudgetCard month={currentMonth} />
         <SpendingDonut month={currentMonth} />
         <MonthlyTrendChart />
         <RecentTransactions month={currentMonth} />
@@ -91,6 +94,7 @@ export function Dashboard() {
 }
 
 function Header() {
+  const navigate = useNavigate()
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -100,9 +104,13 @@ function Header() {
         <p className="text-text-muted text-xs">{greeting}</p>
         <h1 className="text-text-primary text-lg font-bold tracking-tight">Pocket Advisor</h1>
       </div>
-      <div className="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center">
-        <Sparkles size={16} className="text-accent" />
-      </div>
+      <button
+        onClick={() => navigate('/settings')}
+        className="w-9 h-9 rounded-full bg-bg-elevated flex items-center justify-center"
+        aria-label="Settings"
+      >
+        <Settings size={16} className="text-text-muted" />
+      </button>
     </div>
   )
 }

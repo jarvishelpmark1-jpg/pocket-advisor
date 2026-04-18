@@ -24,6 +24,27 @@
   --color-info: #3B82F6;
 }
 
+[data-theme="light"] {
+  --color-bg-primary: #F8FAFC;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #F1F5F9;
+  --color-bg-hover: #E2E8F0;
+  --color-border: #E2E8F0;
+  --color-border-light: #CBD5E1;
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
+  --color-accent: #4F46E5;
+  --color-accent-light: #6366F1;
+  --color-income: #059669;
+  --color-income-light: #10B981;
+  --color-expense: #DC2626;
+  --color-expense-light: #EF4444;
+  --color-warning: #D97706;
+  --color-info: #2563EB;
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
 }
@@ -38,6 +59,9 @@ body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color 0.2s, color 0.2s;
 }
 
 #root {
@@ -63,6 +87,11 @@ input[type="file"] {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+[data-theme="light"] .shimmer {
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,0.03), transparent);
+  background-size: 200% 100%;
 }
 
 @supports (padding: env(safe-area-inset-bottom)) {
