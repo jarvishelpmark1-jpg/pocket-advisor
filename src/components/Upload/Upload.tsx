@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, FileText, Clock, CheckCircle } from 'lucide-react'
+import { FileText, Clock, CheckCircle, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
-import { db } from '../../lib/db'
+import { db, clearAllData } from '../../lib/db'
 import { DropZone } from './DropZone'
 import { ProcessingView } from './ProcessingView'
 import { UploadResults } from './UploadResults'
-import { AddAccountModal } from '../Accounts/AddAccountModal'
 import { Card } from '../shared/Card'
 import type { Account, UploadResult } from '../../lib/types'
+
+const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#06B6D4']
 
 type Phase = 'idle' | 'select-account' | 'processing' | 'results'
 
@@ -18,19 +19,41 @@ export function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
   const [result, setResult] = useState<UploadResult | null>(null)
-  const [showAddAccount, setShowAddAccount] = useState(false)
 
   const accounts = useLiveQuery(() => db.accounts.toArray()) ?? []
   const uploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
+  const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const navigate = useNavigate()
 
-  const handleFileDrop = (f: File) => {
+  const autoCreateAccount = async (): Promise<Account> => {
+    const count = await db.accounts.count()
+    const name = count === 0 ? 'My Account' : `Account ${count + 1}`
+    const color = COLORS[count % COLORS.length]
+    const id = await db.accounts.add({
+      name,
+      type: 'checking',
+      institution: '',
+      balance: 0,
+      color,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    return { id: id as number, name, type: 'checking', institution: '', balance: 0, color, createdAt: new Date(), updatedAt: new Date() }
+  }
+
+  const handleFileDrop = async (f: File) => {
     setFile(f)
-    if (accounts.length === 1) {
-      setSelectedAccount(accounts[0])
+
+    let account: Account | null = null
+    if (accounts.length === 0) {
+      account = await autoCreateAccount()
+    } else if (accounts.length === 1) {
+      account = accounts[0]
+    }
+
+    if (account) {
+      setSelectedAccount(account)
       setPhase('processing')
-    } else if (accounts.length === 0) {
-      setShowAddAccount(true)
     } else {
       setPhase('select-account')
     }
@@ -53,20 +76,30 @@ export function UploadPage() {
     setResult(null)
   }
 
-  const handleAccountAdded = async () => {
-    setShowAddAccount(false)
-    const accts = await db.accounts.toArray()
-    if (accts.length > 0 && file) {
-      setSelectedAccount(accts[accts.length - 1])
-      setPhase('processing')
-    }
+  const handleClearAll = async () => {
+    if (!confirm('Clear all data and start fresh? This removes everything.')) return
+    await clearAllData()
+    handleReset()
   }
 
   return (
     <div className="min-h-full pb-4">
       <div className="px-4 pt-14 pb-4">
-        <h1 className="text-text-primary text-lg font-bold">Upload Statement</h1>
-        <p className="text-text-muted text-xs mt-0.5">PDF, CSV, OFX, or QFX statements from your bank</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-text-primary text-lg font-bold">Upload Statement</h1>
+            <p className="text-text-muted text-xs mt-0.5">Drop a PDF, CSV, OFX, or QFX file</p>
+          </div>
+          {txnCount > 0 && phase === 'idle' && (
+            <button
+              onClick={handleClearAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-400 text-[11px] font-medium bg-red-500/10 active:scale-95 transition-transform"
+            >
+              <Trash2 size={12} />
+              Start Fresh
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="px-4 space-y-4">
@@ -74,7 +107,7 @@ export function UploadPage() {
 
         {phase === 'select-account' && (
           <Card>
-            <p className="text-text-primary text-sm font-medium mb-3">Select account for this statement</p>
+            <p className="text-text-primary text-sm font-medium mb-3">Which account is this statement for?</p>
             <div className="space-y-2">
               {accounts.map((a) => (
                 <button
@@ -87,17 +120,10 @@ export function UploadPage() {
                   </div>
                   <div>
                     <p className="text-text-primary text-sm">{a.name}</p>
-                    <p className="text-text-muted text-[10px]">{a.institution} · {a.type}</p>
+                    <p className="text-text-muted text-[10px]">{a.institution || a.type}</p>
                   </div>
                 </button>
               ))}
-              <button
-                onClick={() => setShowAddAccount(true)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-border text-text-muted text-sm hover:border-accent/40 transition-colors"
-              >
-                <Plus size={16} />
-                Add new account
-              </button>
             </div>
           </Card>
         )}
@@ -142,12 +168,6 @@ export function UploadPage() {
           </div>
         )}
       </div>
-
-      <AddAccountModal
-        open={showAddAccount}
-        onClose={() => setShowAddAccount(false)}
-        onSave={handleAccountAdded}
-      />
     </div>
   )
 }
