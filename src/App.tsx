@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { Dashboard } from './components/Dashboard/Dashboard'
 import { Onboarding } from './components/Onboarding/Onboarding'
 import { ToastProvider } from './components/shared/Toast'
+import { UpdatePrompt } from './components/shared/UpdatePrompt'
 import { getSettings } from './lib/settings'
 
 const UploadPage = lazy(() => import('./components/Upload/Upload').then(m => ({ default: m.UploadPage })))
@@ -34,6 +35,7 @@ export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ToastProvider>
+        <UpdatePrompt />
         <Layout>
           <Suspense fallback={<PageLoader />}>
             <Routes>

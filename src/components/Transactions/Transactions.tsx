@@ -1,23 +1,23 @@
 import { useState, useMemo } from 'react'
-import { Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Filter } from 'lucide-react'
 import { format, subMonths } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
 import { getMonthKey } from '../../lib/analytics'
 import { formatCurrency, formatDate, cleanDescription, formatMonthLong } from '../../lib/formatters'
-import { getCategoryName, getCategoryColor } from '../../lib/categories'
+import { getCategoryName, getCategoryColor, CATEGORIES } from '../../lib/categories'
 import { Card } from '../shared/Card'
 import { EmptyState } from '../shared/EmptyState'
 import { Modal } from '../shared/Modal'
 import { CategoryGrid } from '../Review/CategoryGrid'
 import { updateTransactionCategory } from '../../hooks/useTransactions'
-import { learnFromCorrection } from '../../lib/classifier'
 import type { Transaction, CategoryId } from '../../lib/types'
 
 export function TransactionsPage() {
   const [currentMonth, setCurrentMonth] = useState(getMonthKey(new Date()))
   const [search, setSearch] = useState('')
-  const [filterCategory] = useState<CategoryId | 'all'>('all')
+  const [filterCategory, setFilterCategory] = useState<CategoryId | 'all'>('all')
+  const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
   const [editing, setEditing] = useState<Transaction | null>(null)
 
@@ -62,7 +62,6 @@ export function TransactionsPage() {
 
   const handleReclassify = async (txn: Transaction, categoryId: CategoryId) => {
     await updateTransactionCategory(txn.id!, categoryId)
-    await learnFromCorrection(txn.description, categoryId)
     setEditing(null)
   }
 
@@ -104,16 +103,59 @@ export function TransactionsPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search transactions..."
             className="w-full bg-bg-card border border-border rounded-xl pl-9 pr-3 py-2 text-text-primary text-xs focus:border-accent focus:outline-none"
+            aria-label="Search transactions"
           />
         </div>
         <button
+          onClick={() => setShowFilters(f => !f)}
+          className={`p-2 rounded-xl border transition-colors ${
+            filterCategory !== 'all'
+              ? 'bg-accent/15 border-accent/30 text-accent'
+              : 'bg-bg-card border-border text-text-muted'
+          }`}
+          aria-label="Filter by category"
+          aria-expanded={showFilters}
+        >
+          <Filter size={14} />
+        </button>
+        <button
           onClick={() => setSortBy(s => s === 'date' ? 'amount' : 'date')}
           className="p-2 rounded-xl bg-bg-card border border-border text-text-muted"
-          title={`Sort by ${sortBy === 'date' ? 'amount' : 'date'}`}
+          aria-label={`Sort by ${sortBy === 'date' ? 'amount' : 'date'}`}
         >
           <ArrowUpDown size={14} />
         </button>
       </div>
+
+      {showFilters && (
+        <div className="px-4 mb-3">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setFilterCategory('all')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                filterCategory === 'all'
+                  ? 'bg-accent/15 text-accent border border-accent/30'
+                  : 'bg-bg-elevated text-text-muted border border-transparent'
+              }`}
+            >
+              All
+            </button>
+            {CATEGORIES.filter(c => c.group !== 'transfer').map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setFilterCategory(filterCategory === cat.id ? 'all' : cat.id)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                  filterCategory === cat.id
+                    ? 'bg-accent/15 text-accent border border-accent/30'
+                    : 'bg-bg-elevated text-text-muted border border-transparent'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="px-4">
         {filtered.length === 0 ? (
