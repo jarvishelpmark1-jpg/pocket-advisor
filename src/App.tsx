@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard/Dashboard'
 import { Onboarding } from './components/Onboarding/Onboarding'
 import { ToastProvider } from './components/shared/Toast'
 import { UpdatePrompt } from './components/shared/UpdatePrompt'
+import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { getSettings } from './lib/settings'
 
 const UploadPage = lazy(() => import('./components/Upload/Upload').then(m => ({ default: m.UploadPage })))
@@ -33,22 +34,24 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <ToastProvider>
-        <UpdatePrompt />
-        <Layout>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/upload" element={<UploadPage />} />
-              <Route path="/review" element={<ReviewPage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/transactions" element={<TransactionsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Routes>
-          </Suspense>
-        </Layout>
-      </ToastProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <ToastProvider>
+          <UpdatePrompt />
+          <Layout>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/upload" element={<UploadPage />} />
+                <Route path="/review" element={<ReviewPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/transactions" element={<TransactionsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </Suspense>
+          </Layout>
+        </ToastProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
