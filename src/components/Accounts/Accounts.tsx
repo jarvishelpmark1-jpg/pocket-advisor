@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Plus, Wallet, CreditCard, PiggyBank, TrendingUp, Building } from 'lucide-react'
-import { db } from '../../lib/db'
+import { Plus, Wallet, CreditCard, PiggyBank, TrendingUp, Building, Trash2 } from 'lucide-react'
+import { db, clearAllData } from '../../lib/db'
 import { formatCurrency } from '../../lib/formatters'
 import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
@@ -139,6 +139,23 @@ export function AccountsPage() {
             })}
           </>
         )}
+
+        <div className="mt-8 pt-6 border-t border-border">
+          <h3 className="text-text-muted text-[10px] font-semibold uppercase tracking-wider mb-2">
+            Danger Zone
+          </h3>
+          <button
+            onClick={async () => {
+              if (!confirm('Delete ALL data? This removes every account, transaction, upload, and learned rule. This cannot be undone.')) return
+              if (!confirm('Are you absolutely sure? All data will be permanently erased.')) return
+              await clearAllData()
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium active:scale-[0.98] transition-transform"
+          >
+            <Trash2 size={16} />
+            Clear All Data
+          </button>
+        </div>
       </div>
 
       <AddAccountModal open={showAdd} onClose={() => setShowAdd(false)} onSave={() => setShowAdd(false)} />

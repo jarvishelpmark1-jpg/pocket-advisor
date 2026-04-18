@@ -4,7 +4,7 @@ import { parsePDF } from './pdf-parser'
 import { classifyTransaction } from './classifier'
 import type { Transaction, UploadResult, ParsedTransaction } from './types'
 
-const AUTO_CLASSIFY_THRESHOLD = 0.55
+const AUTO_REVIEW_THRESHOLD = 0.7
 
 export async function processUpload(
   file: File,
@@ -57,7 +57,7 @@ export async function processUpload(
 
   for (let i = 0; i < parsed.length; i++) {
     const p = parsed[i]
-    onProgress?.(Math.round(10 + ((i + 1) / parsed.length) * 85))
+    onProgress?.(Math.round(10 + ((i + 1) / parsed.length) * 80))
 
     const existing = await db.transactions
       .where('[accountId+date+amount+description]')
@@ -70,7 +70,7 @@ export async function processUpload(
     }
 
     const classification = await classifyTransaction(p)
-    const isAutoClassified = classification.confidence >= AUTO_CLASSIFY_THRESHOLD
+    const isAutoReviewed = classification.confidence >= AUTO_REVIEW_THRESHOLD
 
     const txn: Transaction = {
       accountId,
@@ -78,9 +78,9 @@ export async function processUpload(
       description: p.description,
       originalDescription: p.description,
       amount: p.amount,
-      categoryId: isAutoClassified ? classification.categoryId : null,
+      categoryId: classification.categoryId,
       confidence: classification.confidence,
-      isReviewed: isAutoClassified && classification.confidence >= 0.85,
+      isReviewed: isAutoReviewed,
       isRecurring: false,
       merchantName: classification.merchantName,
       notes: '',
@@ -92,8 +92,41 @@ export async function processUpload(
     txn.id = id as number
     transactions.push(txn)
 
-    if (isAutoClassified) autoClassified++
+    if (isAutoReviewed) autoClassified++
     else needsReview++
+  }
+
+  onProgress?.(92)
+
+  const descGroups = new Map<string, Transaction[]>()
+  for (const txn of transactions) {
+    if (txn.isReviewed) continue
+    const key = (txn.merchantName || txn.description.slice(0, 20)).toUpperCase()
+    const group = descGroups.get(key)
+    if (group) group.push(txn)
+    else descGroups.set(key, [txn])
+  }
+
+  for (const [, group] of descGroups) {
+    if (group.length < 2) continue
+    const reviewed = group.find(t => t.confidence >= AUTO_REVIEW_THRESHOLD)
+    if (!reviewed) {
+      const best = group.reduce((a, b) => a.confidence > b.confidence ? a : b)
+      if (best.confidence >= 0.5) {
+        for (const txn of group) {
+          const boosted = Math.min(best.confidence + 0.15, 0.95)
+          await db.transactions.update(txn.id!, {
+            categoryId: best.categoryId,
+            confidence: boosted,
+            isReviewed: boosted >= AUTO_REVIEW_THRESHOLD,
+          })
+          if (boosted >= AUTO_REVIEW_THRESHOLD) {
+            autoClassified++
+            needsReview--
+          }
+        }
+      }
+    }
   }
 
   onProgress?.(98)
@@ -105,7 +138,7 @@ export async function processUpload(
   await db.uploads.update(upload as number, {
     transactionCount: transactions.length,
     autoClassified,
-    needsReview,
+    needsReview: Math.max(needsReview, 0),
     periodStart,
     periodEnd,
   })
@@ -113,7 +146,7 @@ export async function processUpload(
   return {
     total: transactions.length,
     autoClassified,
-    needsReview,
+    needsReview: Math.max(needsReview, 0),
     duplicatesSkipped,
     transactions,
   }

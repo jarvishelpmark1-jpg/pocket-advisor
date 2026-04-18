@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, ListChecks, Layers } from 'lucide-react'
 import { useUnreviewedTransactions } from '../../hooks/useTransactions'
@@ -9,24 +9,33 @@ import { ProgressBar } from '../shared/ProgressBar'
 import { formatCurrency } from '../../lib/formatters'
 import type { Transaction, CategoryId } from '../../lib/types'
 import { updateTransactionCategory, batchUpdateCategory } from '../../hooks/useTransactions'
-import { learnFromCorrection } from '../../lib/classifier'
+
+interface Toast {
+  message: string
+  key: number
+}
 
 export function ReviewPage() {
   const transactions = useUnreviewedTransactions()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [mode, setMode] = useState<'single' | 'batch'>('single')
   const [completedCount, setCompletedCount] = useState(0)
+  const [toast, setToast] = useState<Toast | null>(null)
+
+  const showToast = useCallback((message: string) => {
+    setToast({ message, key: Date.now() })
+    setTimeout(() => setToast(null), 3000)
+  }, [])
 
   const grouped = useMemo(() => {
     if (!transactions) return []
     const groups: Record<string, Transaction[]> = {}
     for (const txn of transactions) {
-      const key = txn.merchantName || txn.description.slice(0, 15).toUpperCase()
+      const key = txn.merchantName || txn.description.slice(0, 20).toUpperCase()
       if (!groups[key]) groups[key] = []
       groups[key].push(txn)
     }
     return Object.entries(groups)
-      .filter(([, txns]) => txns.length > 1)
       .sort((a, b) => b[1].length - a[1].length)
   }, [transactions])
 
@@ -54,24 +63,28 @@ export function ReviewPage() {
   const reviewed = completedCount
 
   const handleClassify = async (txn: Transaction, categoryId: CategoryId) => {
-    await updateTransactionCategory(txn.id!, categoryId)
-    await learnFromCorrection(txn.description, categoryId)
-    setCompletedCount(c => c + 1)
+    const alsoApplied = await updateTransactionCategory(txn.id!, categoryId)
+    const thisSession = 1 + alsoApplied
+    setCompletedCount(c => c + thisSession)
 
-    if (mode === 'single') {
-      if (currentIdx >= transactions.length - 1) {
-        setCurrentIdx(0)
-      }
+    if (alsoApplied > 0) {
+      showToast(`Also applied to ${alsoApplied} similar transaction${alsoApplied > 1 ? 's' : ''}`)
+    }
+
+    if (mode === 'single' && currentIdx >= transactions.length - 1) {
+      setCurrentIdx(0)
     }
   }
 
   const handleBatchClassify = async (txns: Transaction[], categoryId: CategoryId) => {
     const ids = txns.map(t => t.id!).filter(Boolean)
-    await batchUpdateCategory(ids, categoryId)
-    if (txns[0]) {
-      await learnFromCorrection(txns[0].description, categoryId)
+    const alsoApplied = await batchUpdateCategory(ids, categoryId)
+    const thisSession = txns.length + alsoApplied
+    setCompletedCount(c => c + thisSession)
+
+    if (alsoApplied > 0) {
+      showToast(`Also applied to ${alsoApplied} similar transaction${alsoApplied > 1 ? 's' : ''}`)
     }
-    setCompletedCount(c => c + txns.length)
   }
 
   const handleSkip = () => {
@@ -157,6 +170,22 @@ export function ReviewPage() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.key}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-24 left-4 right-4 flex justify-center pointer-events-none z-50"
+          >
+            <div className="bg-emerald-600 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg">
+              {toast.message}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -185,7 +214,7 @@ function BatchGroup({
         <div className="flex-1 min-w-0">
           <p className="text-text-primary text-sm truncate">{name}</p>
           <p className="text-text-muted text-[10px]">
-            {transactions.length} transactions · {formatCurrency(total)}
+            {transactions.length} transaction{transactions.length > 1 ? 's' : ''} · {formatCurrency(total)}
           </p>
         </div>
       </button>

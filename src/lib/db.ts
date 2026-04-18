@@ -17,4 +17,14 @@ db.version(1).stores({
   monthlySnapshots: '++id, &month',
 })
 
+export async function clearAllData(): Promise<void> {
+  await db.transaction('rw', [db.accounts, db.transactions, db.uploads, db.userRules, db.monthlySnapshots], async () => {
+    await db.accounts.clear()
+    await db.transactions.clear()
+    await db.uploads.clear()
+    await db.userRules.clear()
+    await db.monthlySnapshots.clear()
+  })
+}
+
 export { db }
