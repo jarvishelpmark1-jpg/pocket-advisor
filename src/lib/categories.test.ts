@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { getCategoryColor, getCategoryName, CATEGORIES, EXPENSE_CATEGORIES, INCOME_CATEGORIES, CATEGORY_MAP } from './categories'
+import type { CategoryId } from './types'
+
+const UNKNOWN = 'nonexistent' as unknown as CategoryId
 
 describe('getCategoryColor', () => {
   it('returns correct color for known categories', () => {
@@ -13,7 +16,7 @@ describe('getCategoryColor', () => {
   })
 
   it('returns fallback for unknown category', () => {
-    expect(getCategoryColor('nonexistent' as any)).toBe('#6B7280')
+    expect(getCategoryColor(UNKNOWN)).toBe('#6B7280')
   })
 })
 
@@ -29,7 +32,7 @@ describe('getCategoryName', () => {
   })
 
   it('returns Other for unknown category', () => {
-    expect(getCategoryName('nonexistent' as any)).toBe('Other')
+    expect(getCategoryName(UNKNOWN)).toBe('Other')
   })
 })
 
