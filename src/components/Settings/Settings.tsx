@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Sun, Moon, Monitor, Plus, Wallet, CreditCard, PiggyBank,
   TrendingUp, Building, Download, Upload, Trash2, ChevronRight,
-  Database, Palette, DollarSign, Shield, Lock,
+  Database, Palette, DollarSign, Shield, Lock, Cloud,
 } from 'lucide-react'
 import { db, clearAllData } from '../../lib/db'
 import { useTheme } from '../../hooks/useTheme'
@@ -19,6 +19,8 @@ import { useToast } from '../../hooks/useToast'
 import { AddAccountModal } from '../Accounts/AddAccountModal'
 import { EditBalanceModal } from '../Accounts/EditBalanceModal'
 import { AppLockSettings } from './AppLockSettings'
+import { CloudAccountSettings } from './CloudAccountSettings'
+import { isCloudEnabled } from '../../lib/supabase'
 import type { Account, AccountType, CategoryId } from '../../lib/types'
 
 const TYPE_ICONS: Record<AccountType, typeof Wallet> = {
@@ -105,6 +107,12 @@ export function SettingsPage() {
       </div>
 
       <div className="px-4 space-y-6">
+        {isCloudEnabled() && (
+          <Section icon={<Cloud size={16} />} title="Account">
+            <CloudAccountSettings />
+          </Section>
+        )}
+
         <Section icon={<Palette size={16} />} title="Appearance">
           <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Theme">
             {([

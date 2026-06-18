@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { Dashboard } from './components/Dashboard/Dashboard'
 import { Onboarding } from './components/Onboarding/Onboarding'
 import { LockScreen } from './components/Lock/LockScreen'
+import { AuthGate } from './components/Auth/AuthGate'
 import { ToastProvider } from './components/shared/Toast'
 import { UpdatePrompt } from './components/shared/UpdatePrompt'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
@@ -45,29 +46,31 @@ export default function App() {
     )
   }
 
-  if (locked && hasPin()) {
-    return <LockScreen onUnlock={() => setLocked(false)} />
-  }
-
   return (
     <ErrorBoundary>
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <ToastProvider>
-          <UpdatePrompt />
-          <Layout>
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/upload" element={<UploadPage />} />
-                <Route path="/review" element={<ReviewPage />} />
-                <Route path="/analytics" element={<AnalyticsPage />} />
-                <Route path="/transactions" element={<TransactionsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </Suspense>
-          </Layout>
-        </ToastProvider>
-      </BrowserRouter>
+      <AuthGate>
+        {locked && hasPin() ? (
+          <LockScreen onUnlock={() => setLocked(false)} />
+        ) : (
+          <BrowserRouter basename={import.meta.env.BASE_URL}>
+            <ToastProvider>
+              <UpdatePrompt />
+              <Layout>
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/upload" element={<UploadPage />} />
+                    <Route path="/review" element={<ReviewPage />} />
+                    <Route path="/analytics" element={<AnalyticsPage />} />
+                    <Route path="/transactions" element={<TransactionsPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                  </Routes>
+                </Suspense>
+              </Layout>
+            </ToastProvider>
+          </BrowserRouter>
+        )}
+      </AuthGate>
     </ErrorBoundary>
   )
 }
