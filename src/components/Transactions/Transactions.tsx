@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Filter } from 'lucide-react'
+import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Filter, Plus } from 'lucide-react'
 import { format, subMonths } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
@@ -10,7 +10,9 @@ import { Card } from '../shared/Card'
 import { EmptyState } from '../shared/EmptyState'
 import { Modal } from '../shared/Modal'
 import { CategoryGrid } from '../Review/CategoryGrid'
+import { AddTransactionModal } from './AddTransactionModal'
 import { updateTransactionCategory } from '../../hooks/useTransactions'
+import { useToast } from '../../hooks/useToast'
 import type { Transaction, CategoryId } from '../../lib/types'
 
 export function TransactionsPage() {
@@ -20,6 +22,8 @@ export function TransactionsPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const { toast } = useToast()
 
   const transactions = useLiveQuery(async () => {
     const start = new Date(currentMonth + '-01')
@@ -77,8 +81,16 @@ export function TransactionsPage() {
 
   return (
     <div className="min-h-full pb-4">
-      <div className="px-4 pt-14 pb-2">
+      <div className="px-4 pt-14 pb-2 flex items-center justify-between">
         <h1 className="text-text-primary text-lg font-bold">Transactions</h1>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 border border-accent/30 text-accent text-[11px] font-medium active:scale-95 transition-transform"
+          aria-label="Add transaction manually"
+        >
+          <Plus size={13} />
+          Add
+        </button>
       </div>
 
       <div className="px-4 mb-3 flex items-center justify-between">
@@ -208,6 +220,12 @@ export function TransactionsPage() {
           </div>
         )}
       </div>
+
+      <AddTransactionModal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        onAdded={() => { setShowAdd(false); toast('Transaction added') }}
+      />
 
       {editing && (
         <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit Transaction">

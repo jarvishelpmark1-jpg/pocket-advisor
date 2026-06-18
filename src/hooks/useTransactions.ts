@@ -3,6 +3,7 @@ import { db } from '../lib/db'
 import type { CategoryId } from '../lib/types'
 import { startOfMonth, endOfMonth, parseISO } from 'date-fns'
 import { learnFromCorrection } from '../lib/classifier'
+import { reconcileTransfers } from '../lib/reconcile'
 
 export function useTransactions(month?: string) {
   return useLiveQuery(async () => {
@@ -40,6 +41,41 @@ export function useAccounts() {
 
 export function useUploads() {
   return useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().toArray())
+}
+
+/**
+ * Insert a hand-entered transaction (cash, Venmo, anything not on a
+ * statement). `amount` is signed: positive for money in, negative for money
+ * out. Marked reviewed (the user chose the category) and reconciled in case it
+ * is the missing leg of a transfer.
+ */
+export async function addManualTransaction(input: {
+  accountId: number
+  date: Date
+  description: string
+  amount: number
+  categoryId: CategoryId
+}): Promise<number> {
+  const now = new Date()
+  const id = await db.transactions.add({
+    accountId: input.accountId,
+    date: input.date,
+    description: input.description.trim(),
+    originalDescription: input.description.trim(),
+    amount: input.amount,
+    categoryId: input.categoryId,
+    confidence: 1,
+    isReviewed: true,
+    isRecurring: false,
+    merchantName: null,
+    notes: '',
+    transferPairId: null,
+    source: 'manual',
+    uploadId: 0,
+    createdAt: now,
+  })
+  await reconcileTransfers()
+  return id as number
 }
 
 export async function updateTransactionCategory(
