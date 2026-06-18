@@ -6,7 +6,15 @@ export interface Account {
   type: AccountType
   institution: string
   lastFour?: string
-  balance: number
+  /**
+   * Known reference balance at {@link anchorDate}. The account's *current*
+   * balance is derived: anchorBalance + every transaction dated after the
+   * anchor (see deriveAccountBalance). For credit/loan accounts this is the
+   * amount owed (a positive number). Never edit this to "the live balance" —
+   * editing re-anchors to a new (value, date) pair.
+   */
+  anchorBalance: number
+  anchorDate: Date
   color: string
   createdAt: Date
   updatedAt: Date
@@ -41,6 +49,11 @@ export interface Transaction {
   isRecurring: boolean
   merchantName: string | null
   notes: string
+  /** id of the opposite leg when this is one side of an internal transfer / card payment, else null */
+  transferPairId: number | null
+  /** how this transaction entered the ledger */
+  source: 'import' | 'manual'
+  /** id of the originating Upload, or 0 for manually-entered transactions */
   uploadId: number
   createdAt: Date
 }

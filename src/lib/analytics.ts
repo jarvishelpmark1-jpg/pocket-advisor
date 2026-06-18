@@ -1,6 +1,57 @@
 import { db } from './db'
-import type { Transaction, RecurringTransaction, CategoryId, MonthlySnapshot } from './types'
+import type { Account, Transaction, RecurringTransaction, CategoryId, MonthlySnapshot } from './types'
 import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+
+function isLiability(type: Account['type']): boolean {
+  return type === 'credit' || type === 'loan'
+}
+
+/**
+ * Current balance derived from the account's anchor plus every transaction
+ * dated after the anchor. For assets a deposit (+amount) raises the balance;
+ * for liabilities a purchase (-amount) raises the amount owed and a payment
+ * (+amount) lowers it. Returned in the account's natural terms (assets: cash
+ * value, liabilities: amount owed as a positive number).
+ */
+export function deriveAccountBalance(account: Account, accountTxns: Transaction[]): number {
+  const anchorTime = account.anchorDate.getTime()
+  let delta = 0
+  for (const t of accountTxns) {
+    if (t.date.getTime() > anchorTime) delta += t.amount
+  }
+  return isLiability(account.type) ? account.anchorBalance - delta : account.anchorBalance + delta
+}
+
+/** Signed contribution of an account to net worth (liabilities subtract). */
+export function netWorthContribution(account: Account, currentBalance: number): number {
+  return isLiability(account.type) ? -currentBalance : currentBalance
+}
+
+export interface AccountBalance {
+  account: Account
+  current: number
+  contribution: number
+}
+
+/** Current balances for every account, derived from anchors + transactions. */
+export async function getAccountBalances(): Promise<AccountBalance[]> {
+  const [accounts, txns] = await Promise.all([
+    db.accounts.toArray(),
+    db.transactions.toArray(),
+  ])
+
+  const byAccount = new Map<number, Transaction[]>()
+  for (const t of txns) {
+    const arr = byAccount.get(t.accountId)
+    if (arr) arr.push(t)
+    else byAccount.set(t.accountId, [t])
+  }
+
+  return accounts.map((account) => {
+    const current = deriveAccountBalance(account, byAccount.get(account.id!) ?? [])
+    return { account, current, contribution: netWorthContribution(account, current) }
+  })
+}
 
 export function getMonthKey(date: Date): string {
   return format(date, 'yyyy-MM')
@@ -196,11 +247,8 @@ export async function getNeedsWantsSavings(month: string) {
 }
 
 export async function computeNetWorth(): Promise<number> {
-  const accounts = await db.accounts.toArray()
-  return accounts.reduce((sum, a) => {
-    if (a.type === 'credit' || a.type === 'loan') return sum - Math.abs(a.balance)
-    return sum + a.balance
-  }, 0)
+  const balances = await getAccountBalances()
+  return balances.reduce((sum, b) => sum + b.contribution, 0)
 }
 
 export async function saveMonthlySnapshot(month: string): Promise<void> {

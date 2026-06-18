@@ -1,21 +1,21 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../../lib/db'
+import { getAccountBalances } from '../../lib/analytics'
 import { Card } from '../shared/Card'
 import { formatCurrency } from '../../lib/formatters'
 
 export function NetWorthCard() {
-  const accounts = useLiveQuery(() => db.accounts.toArray())
+  const balances = useLiveQuery(() => getAccountBalances())
 
-  if (!accounts || accounts.length === 0) return null
+  if (!balances || balances.length === 0) return null
 
   let assets = 0
   let liabilities = 0
 
-  for (const a of accounts) {
-    if (a.type === 'credit' || a.type === 'loan') {
-      liabilities += Math.abs(a.balance)
+  for (const b of balances) {
+    if (b.contribution < 0) {
+      liabilities += -b.contribution
     } else {
-      assets += a.balance
+      assets += b.current
     }
   }
 

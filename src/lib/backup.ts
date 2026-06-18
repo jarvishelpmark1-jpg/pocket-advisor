@@ -36,6 +36,20 @@ export async function importBackup(json: string): Promise<{ accounts: number; tr
   const data: BackupData = JSON.parse(json)
   if (data.version !== 1) throw new Error('Unsupported backup version')
 
+  // Backups may predate the anchor-balance / transfer-pairing schema; normalize.
+  const accounts = (data.accounts as Record<string, unknown>[] | undefined)?.map((a) => {
+    const next = { ...a }
+    if (next.anchorBalance === undefined) next.anchorBalance = (next.balance as number) ?? 0
+    if (next.anchorDate === undefined) next.anchorDate = next.createdAt ?? new Date().toISOString()
+    delete next.balance
+    return next
+  })
+  const transactions = (data.transactions as Record<string, unknown>[] | undefined)?.map((t) => ({
+    transferPairId: null,
+    source: 'import',
+    ...t,
+  }))
+
   await db.transaction('rw', [db.accounts, db.transactions, db.uploads, db.userRules, db.monthlySnapshots], async () => {
     await db.accounts.clear()
     await db.transactions.clear()
@@ -43,8 +57,8 @@ export async function importBackup(json: string): Promise<{ accounts: number; tr
     await db.userRules.clear()
     await db.monthlySnapshots.clear()
 
-    if (data.accounts?.length) await db.accounts.bulkAdd(data.accounts as never[])
-    if (data.transactions?.length) await db.transactions.bulkAdd(data.transactions as never[])
+    if (accounts?.length) await db.accounts.bulkAdd(accounts as never[])
+    if (transactions?.length) await db.transactions.bulkAdd(transactions as never[])
     if (data.uploads?.length) await db.uploads.bulkAdd(data.uploads as never[])
     if (data.userRules?.length) await db.userRules.bulkAdd(data.userRules as never[])
   })

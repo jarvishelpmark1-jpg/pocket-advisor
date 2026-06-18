@@ -9,6 +9,7 @@ import { db, clearAllData } from '../../lib/db'
 import { useTheme } from '../../hooks/useTheme'
 import { getSettings, saveSettings } from '../../lib/settings'
 import { exportBackup, importBackup, exportTransactionsCSV, downloadFile } from '../../lib/backup'
+import { getAccountBalances } from '../../lib/analytics'
 import { formatCurrency } from '../../lib/formatters'
 import { CATEGORIES } from '../../lib/categories'
 import { Card } from '../shared/Card'
@@ -47,7 +48,9 @@ export function SettingsPage() {
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; count: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const accounts = useLiveQuery(() => db.accounts.toArray()) ?? []
+  const balances = useLiveQuery(() => getAccountBalances()) ?? []
+  const accounts = balances.map((b) => b.account)
+  const balanceOf = (id?: number) => balances.find((b) => b.account.id === id)?.current ?? 0
   const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const ruleCount = useLiveQuery(() => db.userRules.count()) ?? 0
 
@@ -138,7 +141,7 @@ export function SettingsPage() {
                     key={account.id}
                     onClick={() => setEditingAccount(account)}
                     className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-bg-elevated transition-colors text-left"
-                    aria-label={`${account.name}, ${TYPE_LABELS[account.type]}, ${formatCurrency(Math.abs(account.balance))}`}
+                    aria-label={`${account.name}, ${TYPE_LABELS[account.type]}, ${formatCurrency(Math.abs(balanceOf(account.id)))}`}
                   >
                     <div
                       className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -151,7 +154,7 @@ export function SettingsPage() {
                       <p className="text-text-muted text-[10px]">{TYPE_LABELS[account.type]}</p>
                     </div>
                     <span className="text-text-secondary text-sm font-mono">
-                      {formatCurrency(Math.abs(account.balance))}
+                      {formatCurrency(Math.abs(balanceOf(account.id)))}
                     </span>
                     <ChevronRight size={14} className="text-text-muted" />
                   </button>
@@ -223,6 +226,7 @@ export function SettingsPage() {
       {editingAccount && (
         <EditBalanceModal
           account={editingAccount}
+          currentBalance={balanceOf(editingAccount.id)}
           open={!!editingAccount}
           onClose={() => setEditingAccount(null)}
           onDelete={() => handleDeleteAccount(editingAccount.id!)}

@@ -33,16 +33,19 @@ export function UploadPage() {
     const count = await db.accounts.count()
     const name = count === 0 ? 'My Account' : `Account ${count + 1}`
     const color = COLORS[count % COLORS.length]
-    const id = await db.accounts.add({
+    const now = new Date()
+    const base = {
       name,
-      type: 'checking',
+      type: 'checking' as const,
       institution: '',
-      balance: 0,
+      anchorBalance: 0,
+      anchorDate: now,
       color,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    return { id: id as number, name, type: 'checking', institution: '', balance: 0, color, createdAt: new Date(), updatedAt: new Date() }
+      createdAt: now,
+      updatedAt: now,
+    }
+    const id = await db.accounts.add(base)
+    return { id: id as number, ...base }
   }
 
   const handleFileDrop = async (f: File) => {

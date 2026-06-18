@@ -26,22 +26,29 @@ export function AddAccountModal({
 }) {
   const [name, setName] = useState('')
   const [type, setType] = useState<AccountType>('checking')
+  const [startingBalance, setStartingBalance] = useState('')
 
   const reset = () => {
     setName('')
     setType('checking')
+    setStartingBalance('')
   }
+
+  const isLiability = type === 'credit' || type === 'loan'
 
   const handleSave = async () => {
     const accountName = name.trim() || `${ACCOUNT_TYPES.find(t => t.value === type)?.label ?? 'Account'}`
+    const anchorBalance = parseFloat(startingBalance) || 0
+    const now = new Date()
     await db.accounts.add({
       name: accountName,
       type,
       institution: '',
-      balance: 0,
+      anchorBalance,
+      anchorDate: now,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     })
     reset()
     onSave()
@@ -81,6 +88,22 @@ export function AddAccountModal({
             className="w-full bg-bg-elevated border border-border rounded-xl px-3 py-2.5 text-text-primary text-sm focus:border-accent focus:outline-none"
             placeholder={`e.g. Chase ${ACCOUNT_TYPES.find(t => t.value === type)?.label ?? ''}`}
           />
+        </div>
+
+        <div>
+          <label className="text-text-muted text-[10px] font-medium uppercase tracking-wider mb-1.5 block">
+            {isLiability ? 'Balance Owed' : 'Starting Balance'} <span className="text-text-muted/50">(optional)</span>
+          </label>
+          <input
+            value={startingBalance}
+            onChange={(e) => setStartingBalance(e.target.value)}
+            className="w-full bg-bg-elevated border border-border rounded-xl px-3 py-2.5 text-text-primary text-sm font-mono focus:border-accent focus:outline-none"
+            placeholder="0.00"
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+          />
+          <p className="text-text-muted text-[10px] mt-1.5">Balance as of today; imports move it from here.</p>
         </div>
 
         <Button onClick={handleSave} fullWidth>

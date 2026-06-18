@@ -84,6 +84,8 @@ export async function processUpload(
       isRecurring: false,
       merchantName: classification.merchantName,
       notes: '',
+      transferPairId: null,
+      source: 'import',
       uploadId: upload as number,
       createdAt: new Date(),
     }
