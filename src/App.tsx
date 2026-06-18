@@ -1,12 +1,14 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Dashboard } from './components/Dashboard/Dashboard'
 import { Onboarding } from './components/Onboarding/Onboarding'
+import { LockScreen } from './components/Lock/LockScreen'
 import { ToastProvider } from './components/shared/Toast'
 import { UpdatePrompt } from './components/shared/UpdatePrompt'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { getSettings } from './lib/settings'
+import { hasPin } from './lib/applock'
 
 const UploadPage = lazy(() => import('./components/Upload/Upload').then(m => ({ default: m.UploadPage })))
 const ReviewPage = lazy(() => import('./components/Review/Review').then(m => ({ default: m.ReviewPage })))
@@ -24,6 +26,16 @@ function PageLoader() {
 
 export default function App() {
   const [onboarded, setOnboarded] = useState(() => getSettings().hasCompletedOnboarding)
+  const [locked, setLocked] = useState(() => hasPin())
+
+  // Re-lock whenever the app is backgrounded, so returning requires the PIN.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden' && hasPin()) setLocked(true)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   if (!onboarded) {
     return (
@@ -31,6 +43,10 @@ export default function App() {
         <Onboarding onComplete={() => setOnboarded(true)} />
       </BrowserRouter>
     )
+  }
+
+  if (locked && hasPin()) {
+    return <LockScreen onUnlock={() => setLocked(false)} />
   }
 
   return (

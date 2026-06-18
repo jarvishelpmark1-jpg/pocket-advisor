@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Sun, Moon, Monitor, Plus, Wallet, CreditCard, PiggyBank,
   TrendingUp, Building, Download, Upload, Trash2, ChevronRight,
-  Database, Palette, DollarSign, Shield,
+  Database, Palette, DollarSign, Shield, Lock,
 } from 'lucide-react'
 import { db, clearAllData } from '../../lib/db'
 import { useTheme } from '../../hooks/useTheme'
@@ -18,6 +18,7 @@ import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { useToast } from '../../hooks/useToast'
 import { AddAccountModal } from '../Accounts/AddAccountModal'
 import { EditBalanceModal } from '../Accounts/EditBalanceModal'
+import { AppLockSettings } from './AppLockSettings'
 import type { Account, AccountType, CategoryId } from '../../lib/types'
 
 const TYPE_ICONS: Record<AccountType, typeof Wallet> = {
@@ -176,6 +177,10 @@ export function SettingsPage() {
 
         <Section icon={<DollarSign size={16} />} title="Monthly Budget">
           <BudgetSection show={showBudgets} onToggle={() => setShowBudgets(!showBudgets)} onSave={() => toast('Budget saved')} />
+        </Section>
+
+        <Section icon={<Lock size={16} />} title="Security">
+          <AppLockSettings />
         </Section>
 
         <Section icon={<Database size={16} />} title="Data">
