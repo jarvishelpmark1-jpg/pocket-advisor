@@ -6,6 +6,11 @@ function isLiability(type: Account['type']): boolean {
   return type === 'credit' || type === 'loan'
 }
 
+/** Internal moves (transfers, ATM cash, matched transfer pairs) are not spend or income. */
+function isInternalMove(txn: Transaction): boolean {
+  return txn.transferPairId !== null || txn.categoryId === 'transfer' || txn.categoryId === 'atm_cash'
+}
+
 /**
  * Current balance derived from the account's anchor plus every transaction
  * dated after the anchor. For assets a deposit (+amount) raises the balance;
@@ -74,7 +79,7 @@ export async function getMonthlyTotals(month: string) {
   const categoryTotals: Record<string, number> = {}
 
   for (const txn of txns) {
-    if (txn.categoryId === 'transfer' || txn.categoryId === 'atm_cash') continue
+    if (isInternalMove(txn)) continue
 
     if (txn.amount > 0) {
       totalIncome += txn.amount
@@ -97,7 +102,7 @@ export async function getCategoryBreakdown(month: string) {
 
   for (const txn of txns) {
     if (txn.amount >= 0) continue
-    if (txn.categoryId === 'transfer' || txn.categoryId === 'atm_cash') continue
+    if (isInternalMove(txn)) continue
 
     const cat = txn.categoryId || 'other'
     if (!breakdown[cat]) breakdown[cat] = { total: 0, count: 0 }
@@ -116,6 +121,7 @@ export async function getTopMerchants(month: string, limit = 10) {
 
   for (const txn of txns) {
     if (txn.amount >= 0) continue
+    if (isInternalMove(txn)) continue
     const name = txn.merchantName || txn.description.slice(0, 30)
     if (!merchants[name]) merchants[name] = { total: 0, count: 0 }
     merchants[name].total += Math.abs(txn.amount)
@@ -208,7 +214,7 @@ export async function getSpendingVelocity(month: string) {
   const dailySpend: Record<string, number> = {}
 
   for (const txn of txns) {
-    if (txn.amount >= 0 || txn.categoryId === 'transfer') continue
+    if (txn.amount >= 0 || isInternalMove(txn)) continue
     const day = format(txn.date, 'yyyy-MM-dd')
     dailySpend[day] = (dailySpend[day] || 0) + Math.abs(txn.amount)
   }
@@ -231,7 +237,7 @@ export async function getNeedsWantsSavings(month: string) {
 
   for (const txn of txns) {
     if (txn.amount >= 0) continue
-    if (txn.categoryId === 'transfer' || txn.categoryId === 'atm_cash') continue
+    if (isInternalMove(txn)) continue
 
     const abs = Math.abs(txn.amount)
     if (SAVINGS_CATEGORIES.includes(txn.categoryId as CategoryId)) {

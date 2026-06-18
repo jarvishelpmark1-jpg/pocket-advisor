@@ -117,5 +117,6 @@ export interface UploadResult {
   autoClassified: number
   needsReview: number
   duplicatesSkipped: number
+  transfersMatched: number
   transactions: Transaction[]
 }

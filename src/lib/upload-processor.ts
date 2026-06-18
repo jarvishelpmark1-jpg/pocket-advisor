@@ -2,6 +2,7 @@ import { db } from './db'
 import { parseCSV, parseOFX, detectFileType } from './parser'
 import { parsePDF } from './pdf-parser'
 import { classifyTransaction } from './classifier'
+import { reconcileTransfers } from './reconcile'
 import type { Transaction, UploadResult, ParsedTransaction } from './types'
 
 const AUTO_REVIEW_THRESHOLD = 0.7
@@ -51,7 +52,6 @@ export async function processUpload(
   })
 
   let autoClassified = 0
-  let needsReview = 0
   let duplicatesSkipped = 0
   const transactions: Transaction[] = []
 
@@ -95,7 +95,6 @@ export async function processUpload(
     transactions.push(txn)
 
     if (isAutoReviewed) autoClassified++
-    else needsReview++
   }
 
   onProgress?.(92)
@@ -124,12 +123,17 @@ export async function processUpload(
           })
           if (boosted >= AUTO_REVIEW_THRESHOLD) {
             autoClassified++
-            needsReview--
           }
         }
       }
     }
   }
+
+  onProgress?.(96)
+
+  // Match cross-account transfers / card payments against the whole ledger so
+  // both legs net out instead of double-counting as spend + income.
+  const transfersMatched = await reconcileTransfers()
 
   onProgress?.(98)
 
@@ -137,10 +141,15 @@ export async function processUpload(
   const periodStart = dates.length > 0 ? new Date(Math.min(...dates)) : null
   const periodEnd = dates.length > 0 ? new Date(Math.max(...dates)) : null
 
+  // reconciliation may have pulled some just-imported rows out of review
+  const stillNeedsReview = transactions.length
+    ? await db.transactions.where('uploadId').equals(upload as number).filter(t => !t.isReviewed).count()
+    : 0
+
   await db.uploads.update(upload as number, {
     transactionCount: transactions.length,
     autoClassified,
-    needsReview: Math.max(needsReview, 0),
+    needsReview: stillNeedsReview,
     periodStart,
     periodEnd,
   })
@@ -148,8 +157,9 @@ export async function processUpload(
   return {
     total: transactions.length,
     autoClassified,
-    needsReview: Math.max(needsReview, 0),
+    needsReview: stillNeedsReview,
     duplicatesSkipped,
+    transfersMatched,
     transactions,
   }
 }

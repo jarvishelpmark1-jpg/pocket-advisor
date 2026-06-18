@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { CheckCircle2, Copy, ArrowRight } from 'lucide-react'
+import { CheckCircle2, Copy, ArrowRight, ArrowLeftRight } from 'lucide-react'
 import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
 import type { UploadResult } from '../../lib/types'
@@ -43,6 +43,13 @@ export function UploadResults({
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-elevated text-text-muted text-xs">
           <Copy size={12} />
           {result.duplicatesSkipped} duplicate{result.duplicatesSkipped !== 1 ? 's' : ''} skipped
+        </div>
+      )}
+
+      {result.transfersMatched > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-elevated text-text-muted text-xs">
+          <ArrowLeftRight size={12} />
+          {result.transfersMatched} transfer{result.transfersMatched !== 1 ? 's' : ''} matched across accounts (excluded from spending)
         </div>
       )}
 
