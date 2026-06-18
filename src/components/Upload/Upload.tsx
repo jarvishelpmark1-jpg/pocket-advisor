@@ -7,6 +7,7 @@ import { db, clearAllData } from '../../lib/db'
 import { DropZone } from './DropZone'
 import { ProcessingView } from './ProcessingView'
 import { UploadResults } from './UploadResults'
+import { NextImportsCard } from './NextImportsCard'
 import { Card } from '../shared/Card'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { useToast } from '../../hooks/useToast'
@@ -113,6 +114,8 @@ export function UploadPage() {
 
       <div className="px-4 space-y-4">
         {phase === 'idle' && <DropZone onFile={handleFileDrop} />}
+
+        {phase === 'idle' && <NextImportsCard />}
 
         {phase === 'select-account' && (
           <Card>
