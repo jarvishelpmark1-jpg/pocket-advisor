@@ -86,4 +86,27 @@ describe('buildInsights', () => {
     const r = buildInsights(input({ income: 6000, avgIncome: 5000, recurringMonthly: 120, recurringCount: 4 }))
     expect(r[0].id).toBe('income-up')
   })
+
+  it('tracks house-fund progress with a timeline', () => {
+    const r = buildInsights(input({ houseFund: { current: 20000, target: 50000, monthlyContribution: 1500 } }))
+    const i = byId(r, 'house-progress')
+    expect(i?.detail).toContain('20 months') // 30000 / 1500
+    expect(i?.amount).toBe(30000)
+  })
+
+  it('celebrates a funded house goal', () => {
+    expect(ids(buildInsights(input({ houseFund: { current: 50000, target: 50000, monthlyContribution: 0 } })))).toContain('house-funded')
+  })
+
+  it('an explicit emergency goal replaces the generic runway nudge', () => {
+    const r = buildInsights(
+      input({
+        liquidBalance: 2000,
+        avgExpenses: 4000, // would normally trigger thin-runway
+        emergencyFund: { current: 2000, target: 16000, monthlyContribution: 500 },
+      })
+    )
+    expect(ids(r)).toContain('emergency-progress')
+    expect(ids(r)).not.toContain('thin-runway')
+  })
 })

@@ -1,3 +1,4 @@
+import { db } from './db'
 import type { CategoryId } from './types'
 import {
   getMonthKey,
@@ -48,6 +49,8 @@ export interface InsightInput {
   /** bank/card fees paid this month */
   fees: number
   hasHistory: boolean
+  houseFund?: { current: number; target: number; monthlyContribution: number }
+  emergencyFund?: { current: number; target: number; monthlyContribution: number }
 }
 
 const NEEDS_RUNWAY_MONTHS = 3
@@ -146,8 +149,60 @@ export function buildInsights(input: InsightInput): Insight[] {
     }
   }
 
-  // --- RUNWAY / EMERGENCY FUND (security for kids on the way) ---
-  if (input.avgExpenses > 0) {
+  // --- HOUSE FUND (a top goal) ---
+  if (input.houseFund && input.houseFund.target > 0) {
+    const { current, target, monthlyContribution } = input.houseFund
+    const remaining = Math.max(0, target - current)
+    const pct = Math.min(100, (current / target) * 100)
+    if (remaining <= 0) {
+      out.push({
+        id: 'house-funded',
+        kind: 'win',
+        title: 'House down payment is funded',
+        detail: `You've hit your ${f(target)} goal. That's the big one — time to go house shopping.`,
+        priority: 92,
+      })
+    } else {
+      const months = monthlyContribution > 0 ? Math.ceil(remaining / monthlyContribution) : null
+      out.push({
+        id: 'house-progress',
+        kind: 'action',
+        title: `${pct.toFixed(0)}% to your house down payment`,
+        detail: `${f(remaining)} to go${months ? ` — about ${months} months at ${f(monthlyContribution)}/mo` : '. Set a monthly contribution to see your timeline'}.`,
+        amount: remaining,
+        priority: 86,
+      })
+    }
+  }
+
+  // --- EMERGENCY FUND GOAL (explicit target overrides the generic runway check) ---
+  if (input.emergencyFund && input.emergencyFund.target > 0) {
+    const { current, target, monthlyContribution } = input.emergencyFund
+    const remaining = Math.max(0, target - current)
+    const pct = Math.min(100, (current / target) * 100)
+    if (remaining <= 0) {
+      out.push({
+        id: 'emergency-funded',
+        kind: 'win',
+        title: 'Emergency fund is fully stocked',
+        detail: `Your ${f(target)} safety net is in place — real security heading into a bigger family.`,
+        priority: 64,
+      })
+    } else {
+      const months = monthlyContribution > 0 ? Math.ceil(remaining / monthlyContribution) : null
+      out.push({
+        id: 'emergency-progress',
+        kind: 'action',
+        title: `${pct.toFixed(0)}% to your emergency fund`,
+        detail: `${f(remaining)} short of your ${f(target)} cushion${months ? ` — ~${months} months at ${f(monthlyContribution)}/mo` : ''}.`,
+        amount: remaining,
+        priority: 83,
+      })
+    }
+  }
+
+  // --- RUNWAY / EMERGENCY FUND (only when no explicit emergency goal is set) ---
+  if (!input.emergencyFund && input.avgExpenses > 0) {
     const months = input.liquidBalance / input.avgExpenses
     if (months < NEEDS_RUNWAY_MONTHS) {
       out.push({
@@ -294,6 +349,10 @@ export async function getInsights(month: string): Promise<Insight[]> {
 
   const fees = totals.categoryTotals['fees'] ?? 0
 
+  const goals = await db.goals.toArray()
+  const house = goals.find((g) => g.kind === 'house')
+  const emergency = goals.find((g) => g.kind === 'emergency')
+
   return buildInsights({
     income: totals.totalIncome,
     expenses: totals.totalExpenses,
@@ -311,6 +370,8 @@ export async function getInsights(month: string): Promise<Insight[]> {
     recurringCount: recurring.length,
     fees,
     hasHistory,
+    houseFund: house ? { current: house.current, target: house.target, monthlyContribution: house.monthlyContribution } : undefined,
+    emergencyFund: emergency ? { current: emergency.current, target: emergency.target, monthlyContribution: emergency.monthlyContribution } : undefined,
   })
 }
 

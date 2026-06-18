@@ -77,6 +77,21 @@ export interface UserRule {
   createdAt: Date
 }
 
+export type GoalKind = 'house' | 'emergency' | 'savings' | 'debt_payoff' | 'custom'
+
+export interface Goal {
+  id?: number
+  kind: GoalKind
+  name: string
+  target: number
+  /** amount set aside so far (manually tracked) */
+  current: number
+  /** optional intended monthly contribution */
+  monthlyContribution: number
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface MonthlySnapshot {
   id?: number
   month: string

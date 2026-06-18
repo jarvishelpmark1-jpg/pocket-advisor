@@ -15,6 +15,7 @@ import { BudgetCard } from './BudgetCard'
 import { RecentTransactions } from './RecentTransactions'
 import { MonthlyTrendChart } from './MonthlyTrendChart'
 import { QuickActions } from './QuickActions'
+import { GoalsCard } from '../Goals/GoalsCard'
 import { EmptyState } from '../shared/EmptyState'
 
 export function Dashboard() {
@@ -82,6 +83,7 @@ export function Dashboard() {
         <InsightsCard month={currentMonth} />
         <NetWorthCard />
         <MoneyFlowCard month={currentMonth} />
+        <GoalsCard />
         <div className="grid grid-cols-2 gap-3">
           <SavingsRateCard month={currentMonth} />
           <QuickActions />

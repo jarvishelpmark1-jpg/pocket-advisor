@@ -9,14 +9,16 @@ interface BackupData {
   transactions: unknown[]
   uploads: unknown[]
   userRules: unknown[]
+  goals?: unknown[]
 }
 
 export async function exportBackup(): Promise<string> {
-  const [accounts, transactions, uploads, userRules] = await Promise.all([
+  const [accounts, transactions, uploads, userRules, goals] = await Promise.all([
     db.accounts.toArray(),
     db.transactions.toArray(),
     db.uploads.toArray(),
     db.userRules.toArray(),
+    db.goals.toArray(),
   ])
 
   const backup: BackupData = {
@@ -27,6 +29,7 @@ export async function exportBackup(): Promise<string> {
     transactions,
     uploads,
     userRules,
+    goals,
   }
 
   return JSON.stringify(backup, null, 2)
@@ -50,17 +53,19 @@ export async function importBackup(json: string): Promise<{ accounts: number; tr
     ...t,
   }))
 
-  await db.transaction('rw', [db.accounts, db.transactions, db.uploads, db.userRules, db.monthlySnapshots], async () => {
+  await db.transaction('rw', [db.accounts, db.transactions, db.uploads, db.userRules, db.monthlySnapshots, db.goals], async () => {
     await db.accounts.clear()
     await db.transactions.clear()
     await db.uploads.clear()
     await db.userRules.clear()
     await db.monthlySnapshots.clear()
+    await db.goals.clear()
 
     if (accounts?.length) await db.accounts.bulkAdd(accounts as never[])
     if (transactions?.length) await db.transactions.bulkAdd(transactions as never[])
     if (data.uploads?.length) await db.uploads.bulkAdd(data.uploads as never[])
     if (data.userRules?.length) await db.userRules.bulkAdd(data.userRules as never[])
+    if (data.goals?.length) await db.goals.bulkAdd(data.goals as never[])
   })
 
   return {
