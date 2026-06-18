@@ -7,6 +7,7 @@ import { db } from '../../lib/db'
 import { getMonthKey } from '../../lib/analytics'
 import { formatMonthLong } from '../../lib/formatters'
 import { NetWorthCard } from './NetWorthCard'
+import { InsightsCard } from './InsightsCard'
 import { CashFlowCard } from './CashFlowCard'
 import { SpendingDonut } from './SpendingDonut'
 import { SavingsRateCard } from './SavingsRateCard'
@@ -78,6 +79,7 @@ export function Dashboard() {
       </div>
 
       <div className="px-4 space-y-3">
+        <InsightsCard month={currentMonth} />
         <NetWorthCard />
         <CashFlowCard month={currentMonth} />
         <div className="grid grid-cols-2 gap-3">
