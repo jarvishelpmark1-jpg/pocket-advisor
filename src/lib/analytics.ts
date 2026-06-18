@@ -115,6 +115,35 @@ export async function getCategoryBreakdown(month: string) {
     .sort((a, b) => b.total - a.total)
 }
 
+export async function getIncomeBreakdown(month: string) {
+  const txns = await getTransactionsForMonth(month)
+  const breakdown: Record<string, { total: number; count: number }> = {}
+
+  for (const txn of txns) {
+    if (txn.amount <= 0) continue
+    if (isInternalMove(txn)) continue
+
+    const source = txn.merchantName || getIncomeSourceLabel(txn.categoryId)
+    if (!breakdown[source]) breakdown[source] = { total: 0, count: 0 }
+    breakdown[source].total += txn.amount
+    breakdown[source].count += 1
+  }
+
+  return Object.entries(breakdown)
+    .map(([source, data]) => ({ source, ...data }))
+    .sort((a, b) => b.total - a.total)
+}
+
+function getIncomeSourceLabel(categoryId: CategoryId | null): string {
+  switch (categoryId) {
+    case 'income_salary': return 'Salary / Payroll'
+    case 'income_freelance': return 'Freelance / Business'
+    case 'income_interest': return 'Interest / Dividends'
+    case 'income_refund': return 'Refunds'
+    default: return 'Other Income'
+  }
+}
+
 export async function getTopMerchants(month: string, limit = 10) {
   const txns = await getTransactionsForMonth(month)
   const merchants: Record<string, { total: number; count: number }> = {}
