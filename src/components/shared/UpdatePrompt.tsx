@@ -42,7 +42,7 @@ export function UpdatePrompt() {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          className="fixed top-0 left-0 right-0 z-50 bg-accent text-white text-xs font-medium flex items-center justify-center gap-2 py-2.5 px-4 safe-top"
+          className="fixed top-0 left-0 right-0 z-50 bg-accent text-white text-xs font-medium flex items-center justify-center gap-2 pb-2.5 px-4 safe-top"
         >
           <RefreshCw size={12} />
           <span>A new version is available</span>
