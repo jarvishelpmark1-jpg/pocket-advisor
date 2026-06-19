@@ -45,14 +45,22 @@ export function Dashboard() {
           <EmptyState
             icon={<Upload size={28} />}
             title="Welcome to Pocket Advisor"
-            description="Upload your first bank or credit card statement to get started with smart financial insights."
+            description="Upload a bank or credit card statement to get started — or add a transaction by hand to try it out."
             action={
-              <button
-                onClick={() => navigate('/upload')}
-                className="bg-accent text-white px-6 py-3 rounded-xl font-medium text-sm active:scale-95 transition-transform"
-              >
-                Upload Statement
-              </button>
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  onClick={() => navigate('/upload')}
+                  className="bg-accent text-white px-6 py-3 rounded-xl font-medium text-sm active:scale-95 transition-transform"
+                >
+                  Upload Statement
+                </button>
+                <button
+                  onClick={() => navigate('/transactions')}
+                  className="text-accent text-sm font-medium px-6 py-2 active:scale-95 transition-transform"
+                >
+                  Add a transaction manually
+                </button>
+              </div>
             }
           />
         </div>
