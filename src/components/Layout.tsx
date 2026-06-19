@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard,
   Upload,
+  Receipt,
   ListChecks,
   BarChart3,
   Settings,
@@ -12,6 +13,7 @@ import { useReviewCount } from '../hooks/useTransactions'
 
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Home' },
+  { path: '/transactions', icon: Receipt, label: 'Activity' },
   { path: '/upload', icon: Upload, label: 'Upload' },
   { path: '/review', icon: ListChecks, label: 'Review' },
   { path: '/analytics', icon: BarChart3, label: 'Insights' },
@@ -44,7 +46,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className="relative flex flex-col items-center gap-0.5 py-1 px-3 min-w-[56px]"
+                className="relative flex flex-col items-center gap-0.5 py-1 px-1.5 min-w-[48px]"
                 aria-label={`${item.label}${showBadge ? `, ${reviewCount} items need review` : ''}`}
                 aria-current={isActive ? 'page' : undefined}
               >
