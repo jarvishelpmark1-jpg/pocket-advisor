@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { subMonths } from 'date-fns'
+import { subMonths, addMonths, parseISO } from 'date-fns'
 import { ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
@@ -17,12 +17,10 @@ export function AnalyticsPage() {
   const txnCount = useLiveQuery(() => db.transactions.count())
 
   const prevMonth = () => {
-    const d = new Date(currentMonth + '-01')
-    setCurrentMonth(getMonthKey(subMonths(d, 1)))
+    setCurrentMonth(getMonthKey(subMonths(parseISO(currentMonth + '-01'), 1)))
   }
   const nextMonth = () => {
-    const d = new Date(currentMonth + '-01')
-    const next = getMonthKey(new Date(d.getFullYear(), d.getMonth() + 1, 1))
+    const next = getMonthKey(addMonths(parseISO(currentMonth + '-01'), 1))
     if (next <= getMonthKey(new Date())) setCurrentMonth(next)
   }
   const isCurrentMonth = currentMonth === getMonthKey(new Date())

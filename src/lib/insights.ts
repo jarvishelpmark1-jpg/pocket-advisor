@@ -10,7 +10,7 @@ import {
 } from './analytics'
 import { getCategoryName } from './categories'
 import { formatCurrency } from './formatters'
-import { subMonths } from 'date-fns'
+import { subMonths, parseISO } from 'date-fns'
 
 export type InsightKind = 'win' | 'watch' | 'action' | 'fact'
 
@@ -303,7 +303,7 @@ export async function getInsights(month: string): Promise<Insight[]> {
   const totals = await getMonthlyTotals(month)
 
   // trailing 3 months (excluding the current month) for baselines
-  const base = new Date(month + '-01')
+  const base = parseISO(month + '-01')
   const priorKeys = [1, 2, 3].map((i) => getMonthKey(subMonths(base, i)))
   const priorTotals = await Promise.all(priorKeys.map((m) => getMonthlyTotals(m)))
   const priorBreakdowns = await Promise.all(priorKeys.map((m) => getCategoryBreakdown(m)))

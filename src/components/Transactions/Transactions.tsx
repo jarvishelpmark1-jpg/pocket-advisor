@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react'
 import { Search, ArrowUpDown, ChevronLeft, ChevronRight, Filter, Plus } from 'lucide-react'
-import { format, subMonths } from 'date-fns'
+import { format, subMonths, addMonths, parseISO } from 'date-fns'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../../lib/db'
-import { getMonthKey } from '../../lib/analytics'
+import { getMonthKey, getTransactionsForMonth } from '../../lib/analytics'
 import { formatCurrency, formatDate, cleanDescription, formatMonthLong } from '../../lib/formatters'
 import { getCategoryName, getCategoryColor, CATEGORIES } from '../../lib/categories'
 import { Card } from '../shared/Card'
@@ -25,14 +24,7 @@ export function TransactionsPage() {
   const [showAdd, setShowAdd] = useState(false)
   const { toast } = useToast()
 
-  const transactions = useLiveQuery(async () => {
-    const start = new Date(currentMonth + '-01')
-    const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59)
-    return db.transactions
-      .where('date')
-      .between(start, end, true, true)
-      .toArray()
-  }, [currentMonth])
+  const transactions = useLiveQuery(() => getTransactionsForMonth(currentMonth), [currentMonth])
 
   const filtered = useMemo(() => {
     if (!transactions) return []
@@ -58,9 +50,9 @@ export function TransactionsPage() {
     return result
   }, [transactions, search, filterCategory, sortBy])
 
-  const prevMonth = () => setCurrentMonth(getMonthKey(subMonths(new Date(currentMonth + '-01'), 1)))
+  const prevMonth = () => setCurrentMonth(getMonthKey(subMonths(parseISO(currentMonth + '-01'), 1)))
   const nextMonth = () => {
-    const next = getMonthKey(new Date(new Date(currentMonth + '-01').getFullYear(), new Date(currentMonth + '-01').getMonth() + 1, 1))
+    const next = getMonthKey(addMonths(parseISO(currentMonth + '-01'), 1))
     if (next <= getMonthKey(new Date())) setCurrentMonth(next)
   }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { subMonths } from 'date-fns'
+import { subMonths, addMonths, parseISO } from 'date-fns'
 import { ChevronLeft, ChevronRight, Settings, Upload } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
@@ -25,13 +25,11 @@ export function Dashboard() {
   const txnCount = useLiveQuery(() => db.transactions.count())
 
   const prevMonth = () => {
-    const d = new Date(currentMonth + '-01')
-    setCurrentMonth(getMonthKey(subMonths(d, 1)))
+    setCurrentMonth(getMonthKey(subMonths(parseISO(currentMonth + '-01'), 1)))
   }
 
   const nextMonth = () => {
-    const d = new Date(currentMonth + '-01')
-    const next = getMonthKey(new Date(d.getFullYear(), d.getMonth() + 1, 1))
+    const next = getMonthKey(addMonths(parseISO(currentMonth + '-01'), 1))
     if (next <= getMonthKey(new Date())) setCurrentMonth(next)
   }
 
