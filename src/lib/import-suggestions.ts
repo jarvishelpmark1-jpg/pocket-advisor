@@ -65,3 +65,41 @@ export function suggestSpokeImports(
     .sort((a, b) => b.total - a.total)
     .slice(0, limit)
 }
+
+export interface Coverage {
+  /** outflow we can fully see (real spending + transfers reconciled to imported accounts) */
+  tracedTotal: number
+  /** outflow leaving to accounts not yet imported */
+  untracedTotal: number
+  /** 0–100; how much of your money movement is fully accounted for */
+  coveragePct: number
+  /** biggest unimported destinations, ranked by dollars */
+  suggestions: ImportSuggestion[]
+}
+
+/**
+ * The guided-onboarding brain: how much of the user's money is fully traced vs.
+ * still flowing to accounts they haven't imported, plus what to import next.
+ * "Trace everything" = drive untracedTotal to zero (coverage to 100%).
+ */
+export function analyzeCoverage(
+  transactions: Transaction[],
+  existingLabels: string[] = [],
+  limit = 4
+): Coverage {
+  let traced = 0
+  let untraced = 0
+  for (const t of transactions) {
+    if (t.amount >= 0) continue
+    if (looksLikeSpokePayment(t)) untraced += Math.abs(t.amount)
+    else traced += Math.abs(t.amount)
+  }
+  const total = traced + untraced
+  const coveragePct = total === 0 ? 100 : Math.round((traced / total) * 100)
+  return {
+    tracedTotal: traced,
+    untracedTotal: untraced,
+    coveragePct,
+    suggestions: suggestSpokeImports(transactions, existingLabels, limit),
+  }
+}

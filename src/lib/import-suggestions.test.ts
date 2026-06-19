@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { suggestSpokeImports } from './import-suggestions'
+import { suggestSpokeImports, analyzeCoverage } from './import-suggestions'
 import type { Transaction } from './types'
 
 let id = 1
@@ -54,5 +54,39 @@ describe('suggestSpokeImports', () => {
   it('ignores regular spending', () => {
     const txns = [txn({ amount: -60, description: 'WHOLE FOODS', categoryId: 'groceries' })]
     expect(suggestSpokeImports(txns)).toEqual([])
+  })
+})
+
+describe('analyzeCoverage', () => {
+  it('reports 100% when all outflow is real spending', () => {
+    const txns = [
+      txn({ amount: -60, description: 'WHOLE FOODS', categoryId: 'groceries' }),
+      txn({ amount: -20, description: 'NETFLIX', categoryId: 'subscriptions' }),
+      txn({ amount: 5000, description: 'PAYROLL', categoryId: 'income_salary' }),
+    ]
+    const c = analyzeCoverage(txns)
+    expect(c.untracedTotal).toBe(0)
+    expect(c.coveragePct).toBe(100)
+  })
+
+  it('counts money flowing to unimported accounts as untraced', () => {
+    const txns = [
+      txn({ amount: -100, description: 'WHOLE FOODS', categoryId: 'groceries' }), // traced
+      txn({ amount: -300, description: 'AMEX PAYMENT', categoryId: 'debt_payment' }), // untraced
+    ]
+    const c = analyzeCoverage(txns)
+    expect(c.tracedTotal).toBe(100)
+    expect(c.untracedTotal).toBe(300)
+    expect(c.coveragePct).toBe(25) // 100 / 400
+    expect(c.suggestions[0].label).toContain('AMEX')
+  })
+
+  it('treats a reconciled transfer as traced', () => {
+    const txns = [
+      txn({ amount: -500, description: 'ONLINE TRANSFER', categoryId: 'transfer', transferPairId: 7 }),
+    ]
+    const c = analyzeCoverage(txns)
+    expect(c.untracedTotal).toBe(0)
+    expect(c.coveragePct).toBe(100)
   })
 })
