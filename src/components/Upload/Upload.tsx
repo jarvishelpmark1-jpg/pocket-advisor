@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { FileText, Clock, CheckCircle, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -11,9 +11,18 @@ import { NextImportsCard } from './NextImportsCard'
 import { Card } from '../shared/Card'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { useToast } from '../../hooks/useToast'
-import type { Account, UploadResult } from '../../lib/types'
+import type { Account, AccountType, UploadResult } from '../../lib/types'
 
 const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#06B6D4']
+
+// Types a guided "Import next" deep-link is allowed to preset (a debt must be
+// created as a debt, not a checking asset). Anything else is ignored.
+const PRESET_TYPES: AccountType[] = ['checking', 'savings', 'credit', 'loan']
+const PRESET_TYPE_LABELS: Partial<Record<AccountType, string>> = {
+  credit: 'credit card',
+  loan: 'loan',
+  savings: 'savings',
+}
 
 type Phase = 'idle' | 'select-account' | 'processing' | 'results'
 
@@ -31,15 +40,27 @@ export function UploadPage() {
   const uploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
   const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const autoCreateAccount = async (): Promise<Account> => {
+  // A guided "Import next" link lands here pre-targeting a NEW account (the
+  // coverage engine only ever suggests accounts that don't exist yet), with an
+  // inferred type so a card/loan is created as a debt.
+  const presetName = searchParams.get('new')?.trim() || ''
+  const presetTypeRaw = searchParams.get('type')?.trim() as AccountType | null
+  const presetType: AccountType =
+    presetTypeRaw && PRESET_TYPES.includes(presetTypeRaw) ? presetTypeRaw : 'checking'
+  const clearPreset = () => {
+    if (presetName) setSearchParams({}, { replace: true })
+  }
+
+  const autoCreateAccount = async (nameOverride?: string, typeOverride?: AccountType): Promise<Account> => {
     const count = await db.accounts.count()
-    const name = count === 0 ? 'My Account' : `Account ${count + 1}`
+    const name = nameOverride || (count === 0 ? 'My Account' : `Account ${count + 1}`)
     const color = COLORS[count % COLORS.length]
     const now = new Date()
     const base = {
       name,
-      type: 'checking' as const,
+      type: typeOverride ?? ('checking' as AccountType),
       institution: '',
       anchorBalance: 0,
       anchorDate: now,
@@ -55,7 +76,10 @@ export function UploadPage() {
     setFile(f)
 
     let account: Account | null = null
-    if (accounts.length === 0) {
+    if (presetName) {
+      account = await autoCreateAccount(presetName, presetType)
+      clearPreset() // consume it so a second drop doesn't create a duplicate
+    } else if (accounts.length === 0) {
       account = await autoCreateAccount()
     } else if (accounts.length === 1) {
       account = accounts[0]
@@ -84,6 +108,7 @@ export function UploadPage() {
     setFile(null)
     setSelectedAccount(null)
     setResult(null)
+    clearPreset()
   }
 
   const handleClearAll = async () => {
@@ -115,6 +140,19 @@ export function UploadPage() {
       </div>
 
       <div className="px-4 space-y-4">
+        {phase === 'idle' && presetName && (
+          <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
+            <p className="text-text-secondary text-[11px]">
+              New account:{' '}
+              <span className="text-accent font-semibold">{presetName}</span>
+              {presetType !== 'checking' && (
+                <span className="text-text-muted"> · {PRESET_TYPE_LABELS[presetType]}</span>
+              )}
+            </p>
+            <p className="text-text-muted text-[10px] mt-0.5">Drop its statement below to add it.</p>
+          </div>
+        )}
+
         {phase === 'idle' && <DropZone onFile={handleFileDrop} />}
 
         {phase === 'idle' && <NextImportsCard />}

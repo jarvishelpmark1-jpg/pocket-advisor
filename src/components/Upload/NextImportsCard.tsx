@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Sparkles } from 'lucide-react'
 import { db } from '../../lib/db'
 import { suggestSpokeImports } from '../../lib/import-suggestions'
@@ -6,6 +7,7 @@ import { formatCurrency } from '../../lib/formatters'
 import { Card } from '../shared/Card'
 
 export function NextImportsCard() {
+  const navigate = useNavigate()
   const suggestions = useLiveQuery(async () => {
     const [txns, accounts] = await Promise.all([db.transactions.toArray(), db.accounts.toArray()])
     const labels = accounts.flatMap((a) => [a.name, a.institution].filter(Boolean) as string[])
@@ -25,7 +27,11 @@ export function NextImportsCard() {
       </p>
       <div className="space-y-2">
         {suggestions.map((s) => (
-          <div key={s.label} className="flex items-center gap-3">
+          <button
+            key={s.label}
+            onClick={() => navigate(`/upload?new=${encodeURIComponent(s.label)}&type=${s.type}`)}
+            className="w-full flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
+          >
             <div className="w-8 h-8 rounded-lg bg-expense/10 text-expense flex items-center justify-center flex-shrink-0">
               <ArrowUpRight size={15} />
             </div>
@@ -34,7 +40,7 @@ export function NextImportsCard() {
               <p className="text-text-muted text-[10px]">{s.count} payment{s.count !== 1 ? 's' : ''} seen</p>
             </div>
             <span className="text-text-secondary text-xs font-mono flex-shrink-0">{formatCurrency(s.total, true)}</span>
-          </div>
+          </button>
         ))}
       </div>
     </Card>

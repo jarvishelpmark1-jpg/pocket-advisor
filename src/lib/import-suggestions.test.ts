@@ -55,6 +55,18 @@ describe('suggestSpokeImports', () => {
     const txns = [txn({ amount: -60, description: 'WHOLE FOODS', categoryId: 'groceries' })]
     expect(suggestSpokeImports(txns)).toEqual([])
   })
+
+  it('infers account type so a deep-linked import is created with the right type', () => {
+    const txns = [
+      txn({ amount: -400, description: 'CHASE CREDIT CARD PAYMENT', categoryId: 'debt_payment' }),
+      txn({ amount: -1800, description: 'WELLS FARGO MORTGAGE PAYMENT', categoryId: 'debt_payment' }),
+      txn({ amount: -500, description: 'ONLINE TRANSFER TO BROKERAGE', categoryId: 'transfer' }),
+    ]
+    const s = suggestSpokeImports(txns)
+    expect(s.find((x) => x.label.includes('CHASE'))?.type).toBe('credit')
+    expect(s.find((x) => x.label.includes('WELLS'))?.type).toBe('loan')
+    expect(s.find((x) => x.label.includes('BROKERAGE'))?.type).toBe('checking')
+  })
 })
 
 describe('analyzeCoverage', () => {
@@ -88,5 +100,14 @@ describe('analyzeCoverage', () => {
     const c = analyzeCoverage(txns)
     expect(c.untracedTotal).toBe(0)
     expect(c.coveragePct).toBe(100)
+  })
+
+  it('still reports untraced money when the spoke is already imported (no suggestion to show)', () => {
+    // CoverageCard relies on this: % can be < 100 with zero "import next" buttons.
+    const txns = [txn({ amount: -300, description: 'AMEX PAYMENT', categoryId: 'debt_payment' })]
+    const c = analyzeCoverage(txns, ['Amex'])
+    expect(c.untracedTotal).toBe(300)
+    expect(c.coveragePct).toBe(0)
+    expect(c.suggestions).toEqual([])
   })
 })

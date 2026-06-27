@@ -8,6 +8,7 @@ import { getMonthKey } from '../../lib/analytics'
 import { formatMonthLong } from '../../lib/formatters'
 import { NetWorthCard } from './NetWorthCard'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
+import { CoverageCard } from './CoverageCard'
 import { InsightsCard } from './InsightsCard'
 import { MoneyFlowCard } from './MoneyFlowCard'
 import { SpendingDonut } from './SpendingDonut'
@@ -90,6 +91,7 @@ export function Dashboard() {
         <InsightsCard month={currentMonth} />
         <NetWorthCard />
         <NetWorthTrendChart />
+        <CoverageCard />
         <MoneyFlowCard month={currentMonth} />
         <GoalsCard />
         <div className="grid grid-cols-2 gap-3">

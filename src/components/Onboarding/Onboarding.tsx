@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, Brain, BarChart3, Shield, ChevronRight } from 'lucide-react'
+import { Upload, Brain, BarChart3, Radar, Shield, ChevronRight } from 'lucide-react'
 import { saveSettings } from '../../lib/settings'
 
 const STEPS = [
@@ -9,6 +9,12 @@ const STEPS = [
     color: '#6366F1',
     title: 'Upload Your Statements',
     description: 'Drop a PDF, CSV, or OFX file from your bank. We support all major formats.',
+  },
+  {
+    icon: Radar,
+    color: '#F43F5E',
+    title: 'Trace Every Dollar',
+    description: "After your first statement, Pocket Advisor spots money flowing to cards, loans, and accounts you haven't added yet — and tells you exactly what to import next, so every dollar is accounted for.",
   },
   {
     icon: Brain,

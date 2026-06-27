@@ -1,9 +1,18 @@
 import type { Transaction } from './types'
 
+/** Account type we can confidently infer for a spoke from its payments. */
+export type SuggestionType = 'credit' | 'loan' | 'checking'
+
 export interface ImportSuggestion {
   label: string
   total: number
   count: number
+  /**
+   * Best-guess account type for this destination, so a deep-linked import
+   * creates a card/loan as a *debt* (not a checking asset) and net worth
+   * stays correct from day one. Falls back to 'checking' when unsure.
+   */
+  type: SuggestionType
 }
 
 // Outflows that represent money leaving for ANOTHER of your accounts — a card
@@ -19,6 +28,20 @@ function looksLikeSpokePayment(t: Transaction): boolean {
   if (t.categoryId === 'debt_payment') return true
   if (t.categoryId === 'transfer') return true
   return SPOKE_PATTERN.test(t.description) || SPOKE_PATTERN.test(t.originalDescription)
+}
+
+const CREDIT_PATTERN = /\bCREDIT\s*CARD\b|\bCARD\s*(PYMT|PMT|PAYMENT)\b|\bCC\s*PAYMENT\b/i
+const LOAN_PATTERN = /\bLOAN\b|\bMORTGAGE\b|\bAUTO\s*(PAY|LOAN)\b/i
+
+// Strength order so a group settles on its most specific (and most net-worth-
+// relevant) type: a credit-card payment wins over a generic transfer.
+const TYPE_RANK: Record<SuggestionType, number> = { credit: 2, loan: 1, checking: 0 }
+
+function inferType(t: Transaction): SuggestionType {
+  const text = `${t.description} ${t.originalDescription}`
+  if (CREDIT_PATTERN.test(text)) return 'credit'
+  if (LOAN_PATTERN.test(text)) return 'loan'
+  return 'checking'
 }
 
 function labelFor(t: Transaction): string {
@@ -52,12 +75,14 @@ export function suggestSpokeImports(
     const upper = label.toUpperCase()
     if (existing.some((e) => e.includes(upper) || upper.includes(e))) continue
 
+    const ty = inferType(t)
     const g = groups.get(label)
     if (g) {
       g.total += Math.abs(t.amount)
       g.count += 1
+      if (TYPE_RANK[ty] > TYPE_RANK[g.type]) g.type = ty
     } else {
-      groups.set(label, { label, total: Math.abs(t.amount), count: 1 })
+      groups.set(label, { label, total: Math.abs(t.amount), count: 1, type: ty })
     }
   }
 
