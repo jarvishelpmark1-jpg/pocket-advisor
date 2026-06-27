@@ -22,6 +22,22 @@ describe('detectStatementBalance', () => {
     expect(detectStatementBalance(lines('Closing Balance $42.00'))?.endingBalance).toBe(42)
   })
 
+  it('reads a textual close date off the balance line (Bank of America style)', () => {
+    const s = detectStatementBalance(lines('Ending balance on June 8, 2026 $2,898.78'))
+    expect(s?.endingBalance).toBe(2898.78)
+    expect(s?.endDate?.getFullYear()).toBe(2026)
+    expect(s?.endDate?.getMonth()).toBe(5) // June
+    expect(s?.endDate?.getDate()).toBe(8)
+  })
+
+  it('reads the closing date from a textual statement period range', () => {
+    const s = detectStatementBalance(
+      lines('for May 8, 2026 to June 8, 2026', 'New Balance $50.00'),
+    )
+    expect(s?.endDate?.getMonth()).toBe(5) // June (the closing date, not May)
+    expect(s?.endDate?.getDate()).toBe(8)
+  })
+
   it('returns null when only a beginning balance is present', () => {
     expect(detectStatementBalance(lines('Beginning Balance $500.00'))).toBeNull()
   })
