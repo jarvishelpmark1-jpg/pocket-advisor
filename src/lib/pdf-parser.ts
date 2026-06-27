@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
-import type { ParsedTransaction } from './types'
+import type { ParsedTransaction, ParseResult } from './types'
+import { detectStatementBalance } from './statement-detect'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -129,13 +130,16 @@ function isNoiseLine(text: string): boolean {
   return noisePatterns.some(p => p.test(lower))
 }
 
-export async function parsePDF(data: ArrayBuffer): Promise<ParsedTransaction[]> {
+export async function parsePDF(data: ArrayBuffer): Promise<ParseResult> {
   const pages = await extractTextFromPDF(data)
   const allLines = pages.flat()
 
-  if (allLines.length === 0) return []
+  if (allLines.length === 0) return { transactions: [], statement: null }
 
   const year = detectStatementYear(allLines)
+  // Detect the closing balance before the strategies run — they (and isNoiseLine)
+  // deliberately drop "ending/closing balance" lines, so scan the raw lines here.
+  const statement = detectStatementBalance(allLines, year)
 
   const strategies = [
     parseByColumnLayout,
@@ -145,15 +149,15 @@ export async function parsePDF(data: ArrayBuffer): Promise<ParsedTransaction[]> 
 
   for (const strategy of strategies) {
     const results = strategy(allLines, year)
-    if (results.length >= 3) return results
+    if (results.length >= 3) return { transactions: results, statement }
   }
 
   for (const strategy of strategies) {
     const results = strategy(allLines, year)
-    if (results.length > 0) return results
+    if (results.length > 0) return { transactions: results, statement }
   }
 
-  return []
+  return { transactions: [], statement }
 }
 
 function parseByColumnLayout(lines: TextLine[], fallbackYear?: number): ParsedTransaction[] {

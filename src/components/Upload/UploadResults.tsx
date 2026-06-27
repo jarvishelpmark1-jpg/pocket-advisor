@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
-import { CheckCircle2, Copy, ArrowRight, ArrowLeftRight } from 'lucide-react'
+import { CheckCircle2, Copy, ArrowRight, ArrowLeftRight, Wallet } from 'lucide-react'
+import { format } from 'date-fns'
 import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
+import { formatCurrency } from '../../lib/formatters'
 import type { UploadResult } from '../../lib/types'
 
 export function UploadResults({
@@ -50,6 +52,14 @@ export function UploadResults({
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-bg-elevated text-text-muted text-xs">
           <ArrowLeftRight size={12} />
           {result.transfersMatched} transfer{result.transfersMatched !== 1 ? 's' : ''} matched across accounts (excluded from spending)
+        </div>
+      )}
+
+      {result.anchorUpdated && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-income/10 text-income text-xs">
+          <Wallet size={12} />
+          {result.anchorUpdated.isLiability ? 'Balance owed' : 'Balance'} set to{' '}
+          {formatCurrency(result.anchorUpdated.balance)} as of {format(result.anchorUpdated.date, 'MMM d, yyyy')}
         </div>
       )}
 

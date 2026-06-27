@@ -1,4 +1,4 @@
-export type AccountType = 'checking' | 'savings' | 'credit' | 'money_market' | 'investment' | 'loan'
+export type AccountType = 'checking' | 'savings' | 'credit' | 'money_market' | 'investment' | 'loan' | 'manual_asset'
 
 export interface Account {
   id?: number
@@ -127,6 +127,23 @@ export interface ParsedTransaction {
   type?: 'credit' | 'debit'
 }
 
+/**
+ * The statement's closing position, when a parser can detect it. `endingBalance`
+ * is the value as it appears in the file: signed cash for OFX (negative = owed),
+ * the printed amount for PDF/CSV. The upload pipeline normalizes it into the
+ * account's anchor terms (see processUpload).
+ */
+export interface StatementMetadata {
+  endingBalance: number
+  endDate: Date | null
+}
+
+/** What a parser returns: the transactions plus optional statement-level metadata. */
+export interface ParseResult {
+  transactions: ParsedTransaction[]
+  statement: StatementMetadata | null
+}
+
 export interface UploadResult {
   total: number
   autoClassified: number
@@ -134,4 +151,6 @@ export interface UploadResult {
   duplicatesSkipped: number
   transfersMatched: number
   transactions: Transaction[]
+  /** set when the statement's ending balance re-anchored the account */
+  anchorUpdated: { balance: number; date: Date; isLiability: boolean } | null
 }

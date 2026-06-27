@@ -8,15 +8,15 @@ export function NetWorthCard() {
 
   if (!balances || balances.length === 0) return null
 
+  // Net worth is the sum of every account's signed contribution (the same
+  // definition as computeNetWorth), so assets, debt, and the total can't drift
+  // apart — an overdrawn asset simply counts as debt.
   let assets = 0
   let liabilities = 0
 
   for (const b of balances) {
-    if (b.contribution < 0) {
-      liabilities += -b.contribution
-    } else {
-      assets += b.current
-    }
+    if (b.contribution < 0) liabilities += -b.contribution
+    else assets += b.contribution
   }
 
   const netWorth = assets - liabilities

@@ -11,6 +11,7 @@ const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'money_market', label: 'Money Market' },
   { value: 'investment', label: 'Investment' },
   { value: 'loan', label: 'Loan' },
+  { value: 'manual_asset', label: 'Asset' },
 ]
 
 const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#06B6D4']
@@ -35,6 +36,8 @@ export function AddAccountModal({
   }
 
   const isLiability = type === 'credit' || type === 'loan'
+  const isManualAsset = type === 'manual_asset'
+  const balanceLabel = isManualAsset ? 'Value' : isLiability ? 'Balance Owed' : 'Starting Balance'
 
   const handleSave = async () => {
     const accountName = name.trim() || `${ACCOUNT_TYPES.find(t => t.value === type)?.label ?? 'Account'}`
@@ -86,13 +89,13 @@ export function AddAccountModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full bg-bg-elevated border border-border rounded-xl px-3 py-2.5 text-text-primary text-sm focus:border-accent focus:outline-none"
-            placeholder={`e.g. Chase ${ACCOUNT_TYPES.find(t => t.value === type)?.label ?? ''}`}
+            placeholder={isManualAsset ? 'e.g. House, Vehicle, Boat' : `e.g. Chase ${ACCOUNT_TYPES.find(t => t.value === type)?.label ?? ''}`}
           />
         </div>
 
         <div>
           <label className="text-text-muted text-[10px] font-medium uppercase tracking-wider mb-1.5 block">
-            {isLiability ? 'Balance Owed' : 'Starting Balance'} <span className="text-text-muted/50">(optional)</span>
+            {balanceLabel} {!isManualAsset && <span className="text-text-muted/50">(optional)</span>}
           </label>
           <input
             value={startingBalance}
@@ -103,7 +106,11 @@ export function AddAccountModal({
             step="0.01"
             inputMode="decimal"
           />
-          <p className="text-text-muted text-[10px] mt-1.5">Balance as of today; imports move it from here.</p>
+          <p className="text-text-muted text-[10px] mt-1.5">
+            {isManualAsset
+              ? "What it's worth today. No statements — update it yourself when the value changes."
+              : 'Balance as of today; imports move it from here.'}
+          </p>
         </div>
 
         <Button onClick={handleSave} fullWidth>

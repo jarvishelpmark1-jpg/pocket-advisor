@@ -25,7 +25,9 @@ export function UploadPage() {
   const [confirmClear, setConfirmClear] = useState(false)
   const { toast } = useToast()
 
-  const accounts = useLiveQuery(() => db.accounts.toArray()) ?? []
+  // Manual assets (house, vehicles, …) have no statements, so they're never
+  // import targets — keep them out of the picker and the lone-account fast path.
+  const accounts = (useLiveQuery(() => db.accounts.toArray()) ?? []).filter((a) => a.type !== 'manual_asset')
   const uploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
   const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const navigate = useNavigate()

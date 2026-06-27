@@ -1,5 +1,5 @@
 import Papa from 'papaparse'
-import type { ParsedTransaction } from './types'
+import type { ParsedTransaction, ParseResult } from './types'
 
 function parseDate(value: string): Date | null {
   if (!value) return null
@@ -59,6 +59,7 @@ interface ColumnMapping {
   credit?: number
   debit?: number
   type?: number
+  balance?: number
 }
 
 function detectColumns(headers: string[]): ColumnMapping | null {
@@ -88,6 +89,10 @@ function detectColumns(headers: string[]): ColumnMapping | null {
     'Type', 'Transaction Type', 'Trans Type',
   ])
 
+  const balanceCol = findColumn(headers, [
+    'Balance', 'Running Balance', 'Running Bal', 'Ending Balance',
+  ])
+
   if (dateCol === -1 || descCol === -1) return null
 
   if (amountCol === -1 && creditCol === -1 && debitCol === -1) return null
@@ -99,26 +104,30 @@ function detectColumns(headers: string[]): ColumnMapping | null {
     credit: creditCol !== -1 ? creditCol : undefined,
     debit: debitCol !== -1 ? debitCol : undefined,
     type: typeCol !== -1 ? typeCol : undefined,
+    balance: balanceCol !== -1 ? balanceCol : undefined,
   }
 }
 
-export function parseCSV(content: string): ParsedTransaction[] {
+export function parseCSV(content: string): ParseResult {
   const result = Papa.parse(content, {
     skipEmptyLines: true,
     header: false,
   })
 
-  if (!result.data || result.data.length < 2) return []
+  if (!result.data || result.data.length < 2) return { transactions: [], statement: null }
 
   const rows = result.data as string[][]
   const headers = rows[0]
   const mapping = detectColumns(headers)
 
   if (!mapping) {
-    return parseWithoutHeaders(rows)
+    return { transactions: parseWithoutHeaders(rows), statement: null }
   }
 
   const transactions: ParsedTransaction[] = []
+  // When a running-balance column is present, the row with the latest date
+  // carries the statement's ending balance.
+  let latestBalance: { date: Date; balance: number } | null = null
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
@@ -126,6 +135,13 @@ export function parseCSV(content: string): ParsedTransaction[] {
 
     const date = parseDate(row[mapping.date])
     if (!date) continue
+
+    if (mapping.balance !== undefined) {
+      const bal = parseAmount(row[mapping.balance])
+      if (bal !== null && (!latestBalance || date.getTime() >= latestBalance.date.getTime())) {
+        latestBalance = { date, balance: bal }
+      }
+    }
 
     const description = (row[mapping.description] || '').trim()
     if (!description) continue
@@ -160,7 +176,12 @@ export function parseCSV(content: string): ParsedTransaction[] {
     transactions.push({ date, description, amount })
   }
 
-  return transactions
+  return {
+    transactions,
+    statement: latestBalance
+      ? { endingBalance: latestBalance.balance, endDate: latestBalance.date }
+      : null,
+  }
 }
 
 function parseWithoutHeaders(rows: string[][]): ParsedTransaction[] {
@@ -194,7 +215,25 @@ function parseWithoutHeaders(rows: string[][]): ParsedTransaction[] {
   return transactions
 }
 
-export function parseOFX(content: string): ParsedTransaction[] {
+function parseOfxDate(s: string): Date | null {
+  const m = s.match(/(\d{8})/)
+  if (!m) return null
+  const d = new Date(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8))
+  return isNaN(d.getTime()) ? null : d
+}
+
+/** Pull the ledger (ending) balance + as-of date from an OFX/QFX file, if present. */
+function extractOfxStatement(content: string): ParseResult['statement'] {
+  const block = content.match(/<LEDGERBAL>([\s\S]*?)<\/LEDGERBAL>/i)?.[1] ?? content
+  const amtMatch = block.match(/<BALAMT>([^<\n\r]+)/i)
+  if (!amtMatch) return null
+  const endingBalance = parseFloat(amtMatch[1].trim())
+  if (isNaN(endingBalance)) return null
+  const asOfMatch = block.match(/<DTASOF>([^<\n\r]+)/i)
+  return { endingBalance, endDate: asOfMatch ? parseOfxDate(asOfMatch[1]) : null }
+}
+
+export function parseOFX(content: string): ParseResult {
   const transactions: ParsedTransaction[] = []
   const txnPattern = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi
   let match
@@ -223,7 +262,7 @@ export function parseOFX(content: string): ParsedTransaction[] {
     }
   }
 
-  return transactions
+  return { transactions, statement: extractOfxStatement(content) }
 }
 
 export function detectFileType(filename: string, content?: string): 'csv' | 'ofx' | 'pdf' | 'unknown' {

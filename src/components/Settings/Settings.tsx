@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Sun, Moon, Monitor, Plus, Wallet, CreditCard, PiggyBank,
   TrendingUp, Building, Download, Upload, Trash2, ChevronRight,
-  Database, Palette, DollarSign, Shield, Lock, Cloud,
+  Database, Palette, DollarSign, Shield, Lock, Cloud, Home,
 } from 'lucide-react'
 import { db, clearAllData } from '../../lib/db'
 import { useTheme } from '../../hooks/useTheme'
@@ -30,6 +30,7 @@ const TYPE_ICONS: Record<AccountType, typeof Wallet> = {
   money_market: Building,
   investment: TrendingUp,
   loan: CreditCard,
+  manual_asset: Home,
 }
 
 const TYPE_LABELS: Record<AccountType, string> = {
@@ -39,6 +40,7 @@ const TYPE_LABELS: Record<AccountType, string> = {
   money_market: 'Money Market',
   investment: 'Investment',
   loan: 'Loan',
+  manual_asset: 'Asset',
 }
 
 export function SettingsPage() {

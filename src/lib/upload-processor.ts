@@ -3,7 +3,8 @@ import { parseCSV, parseOFX, detectFileType } from './parser'
 import { parsePDF } from './pdf-parser'
 import { classifyTransaction } from './classifier'
 import { reconcileTransfers } from './reconcile'
-import type { Transaction, UploadResult, ParsedTransaction } from './types'
+import { isLiability, backfillNetWorthHistory } from './analytics'
+import type { Transaction, UploadResult, ParsedTransaction, StatementMetadata } from './types'
 
 const AUTO_REVIEW_THRESHOLD = 0.7
 
@@ -15,18 +16,25 @@ export async function processUpload(
   const fileType = detectFileType(file.name)
 
   let parsed: ParsedTransaction[]
+  let statement: StatementMetadata | null = null
 
   if (fileType === 'pdf') {
     onProgress?.(5)
     const buffer = await file.arrayBuffer()
-    parsed = await parsePDF(buffer)
+    const r = await parsePDF(buffer)
+    parsed = r.transactions
+    statement = r.statement
   } else {
     const content = await file.text()
     const confirmedType = detectFileType(file.name, content)
     if (confirmedType === 'csv') {
-      parsed = parseCSV(content)
+      const r = parseCSV(content)
+      parsed = r.transactions
+      statement = r.statement
     } else if (confirmedType === 'ofx') {
-      parsed = parseOFX(content)
+      const r = parseOFX(content)
+      parsed = r.transactions
+      statement = r.statement
     } else {
       throw new Error('Unsupported file format. Please upload a PDF, CSV, or OFX/QFX file.')
     }
@@ -39,6 +47,11 @@ export async function processUpload(
         : 'No transactions found in this file. Please check the format.'
     )
   }
+
+  // Capture state before we add rows: whether this is the account's first import
+  // decides whether a statement balance may adopt over the default/seed anchor.
+  const account = await db.accounts.get(accountId)
+  const priorTxnCount = await db.transactions.where('accountId').equals(accountId).count()
 
   const upload = await db.uploads.add({
     accountId,
@@ -141,6 +154,35 @@ export async function processUpload(
   const periodStart = dates.length > 0 ? new Date(Math.min(...dates)) : null
   const periodEnd = dates.length > 0 ? new Date(Math.max(...dates)) : null
 
+  // Re-anchor the account to the statement's ending balance so the derived
+  // balance is actually live (not stuck at the seed value). The statement's
+  // transactions are dated on/before its close, so they're already baked into
+  // that balance and won't double-count (deriveAccountBalance only adds rows
+  // dated strictly after the anchor).
+  let anchorUpdated: UploadResult['anchorUpdated'] = null
+  if (account && statement) {
+    const anchorDate = statement.endDate ?? periodEnd
+    // Adopt on the account's first import (its anchor is just a seed); afterwards
+    // only adopt a newer statement, so re-uploading an old one can't clobber a
+    // more-recent known balance.
+    const adopt =
+      anchorDate !== null &&
+      (priorTxnCount === 0 || anchorDate.getTime() > account.anchorDate.getTime())
+    if (adopt && anchorDate) {
+      const liability = isLiability(account.type)
+      // anchorBalance is stored in natural terms: cash for assets, amount owed
+      // (positive) for liabilities. OFX reports owed as a negative balance, PDFs
+      // print it positive — abs() normalizes both.
+      const anchorBalance = liability ? Math.abs(statement.endingBalance) : statement.endingBalance
+      await db.accounts.update(accountId, { anchorBalance, anchorDate, updatedAt: new Date() })
+      anchorUpdated = { balance: anchorBalance, date: anchorDate, isLiability: liability }
+    }
+  }
+
+  // Balances changed (new rows, maybe a re-anchor) — refresh net-worth history
+  // so the dashboard chart reflects this import.
+  await backfillNetWorthHistory()
+
   // reconciliation may have pulled some just-imported rows out of review
   const stillNeedsReview = transactions.length
     ? await db.transactions.where('uploadId').equals(upload as number).filter(t => !t.isReviewed).count()
@@ -161,5 +203,6 @@ export async function processUpload(
     duplicatesSkipped,
     transfersMatched,
     transactions,
+    anchorUpdated,
   }
 }

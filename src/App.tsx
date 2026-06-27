@@ -10,6 +10,7 @@ import { UpdatePrompt } from './components/shared/UpdatePrompt'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { getSettings } from './lib/settings'
 import { hasPin } from './lib/applock'
+import { backfillNetWorthHistory } from './lib/analytics'
 
 const UploadPage = lazy(() => import('./components/Upload/Upload').then(m => ({ default: m.UploadPage })))
 const ReviewPage = lazy(() => import('./components/Review/Review').then(m => ({ default: m.ReviewPage })))
@@ -37,6 +38,13 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
+
+  // Record/refresh net-worth snapshots on launch. Covers month rollover (first
+  // open in a new month writes that month) and seeds the history chart. No-op
+  // until there are accounts; upsert makes the dev StrictMode double-run safe.
+  useEffect(() => {
+    if (onboarded) void backfillNetWorthHistory()
+  }, [onboarded])
 
   if (!onboarded) {
     return (

@@ -24,6 +24,7 @@ export function EditBalanceModal({
 }) {
   const [balance, setBalance] = useState(currentBalance.toString())
   const [asOf, setAsOf] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const isManualAsset = account.type === 'manual_asset'
 
   const handleSave = async () => {
     const newBalance = parseFloat(balance)
@@ -44,7 +45,7 @@ export function EditBalanceModal({
       <div className="space-y-4">
         <div>
           <label className="text-text-muted text-[10px] font-medium uppercase tracking-wider mb-1.5 block">
-            {isLiability(account.type) ? 'Balance Owed' : 'Current Balance'}
+            {isManualAsset ? 'Value' : isLiability(account.type) ? 'Balance Owed' : 'Current Balance'}
           </label>
           <input
             value={balance}
@@ -68,8 +69,9 @@ export function EditBalanceModal({
             type="date"
           />
           <p className="text-text-muted text-[10px] mt-1.5 leading-relaxed">
-            Transactions dated after this move the balance automatically. Set it
-            to a statement's closing date and amount to reconcile exactly.
+            {isManualAsset
+              ? 'When this value is true as of. Net-worth history uses it from this date forward.'
+              : "Transactions dated after this move the balance automatically. Set it to a statement's closing date and amount to reconcile exactly."}
           </p>
         </div>
 

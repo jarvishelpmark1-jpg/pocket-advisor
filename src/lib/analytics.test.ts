@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveAccountBalance, netWorthContribution } from './analytics'
+import { deriveAccountBalance, deriveBalanceAsOf, netWorthContribution } from './analytics'
 import type { Account, Transaction } from './types'
 
 function account(over: Partial<Account> = {}): Account {
@@ -62,6 +62,35 @@ describe('deriveAccountBalance', () => {
     // a -200 purchase raises the balance owed to 700; a +300 payment lowers it to 400
     const txns = [txn(-200, '2026-03-05'), txn(300, '2026-03-20')]
     expect(deriveAccountBalance(card, txns)).toBe(400)
+  })
+})
+
+describe('deriveBalanceAsOf', () => {
+  const acct = account({ anchorBalance: 1000, anchorDate: new Date('2026-03-01') })
+  const txns = [txn(500, '2026-03-05'), txn(-200, '2026-04-10')]
+
+  it('matches the anchor at the anchor date', () => {
+    expect(deriveBalanceAsOf(acct, txns, new Date('2026-03-01'))).toBe(1000)
+  })
+
+  it('replays transactions forward to a later date', () => {
+    // through March: +500 only → 1500; through April: also -200 → 1300
+    expect(deriveBalanceAsOf(acct, txns, new Date('2026-03-31'))).toBe(1500)
+    expect(deriveBalanceAsOf(acct, txns, new Date('2026-04-30'))).toBe(1300)
+  })
+
+  it('rewinds transactions for a date before the anchor', () => {
+    const a = account({ anchorBalance: 1000, anchorDate: new Date('2026-03-31') })
+    // a deposit of 500 landed on 03-10; before it, the balance was 500
+    const t = [txn(500, '2026-03-10')]
+    expect(deriveBalanceAsOf(a, t, new Date('2026-03-01'))).toBe(500)
+  })
+
+  it('rewinds a liability correctly', () => {
+    const card = account({ type: 'credit', anchorBalance: 700, anchorDate: new Date('2026-03-31') })
+    // a -300 purchase on 03-15 raised owed to 700; before it, owed was 400
+    const t = [txn(-300, '2026-03-15')]
+    expect(deriveBalanceAsOf(card, t, new Date('2026-03-01'))).toBe(400)
   })
 })
 

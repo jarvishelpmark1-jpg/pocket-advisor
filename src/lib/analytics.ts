@@ -2,7 +2,7 @@ import { db } from './db'
 import type { Account, Transaction, RecurringTransaction, CategoryId, MonthlySnapshot } from './types'
 import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns'
 
-function isLiability(type: Account['type']): boolean {
+export function isLiability(type: Account['type']): boolean {
   return type === 'credit' || type === 'loan'
 }
 
@@ -23,6 +23,25 @@ export function deriveAccountBalance(account: Account, accountTxns: Transaction[
   let delta = 0
   for (const t of accountTxns) {
     if (t.date.getTime() > anchorTime) delta += t.amount
+  }
+  return isLiability(account.type) ? account.anchorBalance - delta : account.anchorBalance + delta
+}
+
+/**
+ * Balance as of an arbitrary date. Replays transactions forward from the anchor
+ * to `asOf`, or rewinds back when `asOf` precedes the anchor. Generalizes
+ * deriveAccountBalance (the as-of-now case) so net worth can be reconstructed
+ * for past month-ends. Manual assets have no transactions, so they hold their
+ * anchor value across every date.
+ */
+export function deriveBalanceAsOf(account: Account, accountTxns: Transaction[], asOf: Date): number {
+  const anchorTime = account.anchorDate.getTime()
+  const asOfTime = asOf.getTime()
+  let delta = 0
+  for (const t of accountTxns) {
+    const tt = t.date.getTime()
+    if (tt > anchorTime && tt <= asOfTime) delta += t.amount       // anchor → asOf
+    else if (tt <= anchorTime && tt > asOfTime) delta -= t.amount  // rewind asOf → anchor
   }
   return isLiability(account.type) ? account.anchorBalance - delta : account.anchorBalance + delta
 }
@@ -286,9 +305,60 @@ export async function computeNetWorth(): Promise<number> {
   return balances.reduce((sum, b) => sum + b.contribution, 0)
 }
 
+/** Net worth reconstructed as of a past (or current) date from anchors + transactions. */
+export async function computeNetWorthAsOf(asOf: Date): Promise<number> {
+  const [accounts, txns] = await Promise.all([
+    db.accounts.toArray(),
+    db.transactions.toArray(),
+  ])
+
+  const byAccount = new Map<number, Transaction[]>()
+  for (const t of txns) {
+    const arr = byAccount.get(t.accountId)
+    if (arr) arr.push(t)
+    else byAccount.set(t.accountId, [t])
+  }
+
+  let total = 0
+  for (const account of accounts) {
+    const balance = deriveBalanceAsOf(account, byAccount.get(account.id!) ?? [], asOf)
+    total += netWorthContribution(account, balance)
+  }
+  return total
+}
+
+/** Stored net-worth snapshots, oldest-first, for the net-worth-over-time chart. */
+export async function getNetWorthHistory(monthsBack = 12): Promise<{ month: string; netWorth: number }[]> {
+  const snapshots = await db.monthlySnapshots.toArray()
+  return snapshots
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .slice(-monthsBack)
+    .map((s) => ({ month: s.month, netWorth: s.netWorth }))
+}
+
+/**
+ * Write/refresh net-worth snapshots for the trailing `monthsBack` months. Past
+ * months are reconstructed as-of their month-end from anchors + transactions, so
+ * the history chart is meaningful immediately rather than only going forward.
+ * Idempotent (upsert by month); safe to call on every app start. No-op with no
+ * accounts.
+ */
+export async function backfillNetWorthHistory(monthsBack = 12): Promise<void> {
+  const accountCount = await db.accounts.count()
+  if (accountCount === 0) return
+  const now = new Date()
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    await saveMonthlySnapshot(getMonthKey(subMonths(now, i)))
+  }
+}
+
 export async function saveMonthlySnapshot(month: string): Promise<void> {
   const totals = await getMonthlyTotals(month)
-  const netWorth = await computeNetWorth()
+  // Net worth as of the month's close (capped at now for the current month), so
+  // each month records its own end-of-month position rather than today's.
+  const now = new Date()
+  const monthEnd = endOfMonth(parseISO(month + '-01'))
+  const netWorth = await computeNetWorthAsOf(monthEnd.getTime() > now.getTime() ? now : monthEnd)
 
   const existing = await db.monthlySnapshots.where('month').equals(month).first()
   const snapshot: MonthlySnapshot = {
