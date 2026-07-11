@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { FileText, Clock, CheckCircle, Trash2 } from 'lucide-react'
+import { FileText, Clock, CheckCircle, Trash2, Plus, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import { db, clearAllData } from '../../lib/db'
+import { suggestAccountForFilename } from '../../lib/account-match'
 import { DropZone } from './DropZone'
 import { ProcessingView } from './ProcessingView'
-import { UploadResults } from './UploadResults'
+import { UploadResults, type CompletedUpload } from './UploadResults'
 import { NextImportsCard } from './NextImportsCard'
 import { Card } from '../shared/Card'
+import { Button } from '../shared/Button'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { useToast } from '../../hooks/useToast'
 import type { Account, AccountType, UploadResult } from '../../lib/types'
@@ -24,20 +26,34 @@ const PRESET_TYPE_LABELS: Partial<Record<AccountType, string>> = {
   savings: 'savings',
 }
 
-type Phase = 'idle' | 'select-account' | 'processing' | 'results'
+const NEW_ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
+  { value: 'checking', label: 'Checking' },
+  { value: 'savings', label: 'Savings' },
+  { value: 'credit', label: 'Credit card' },
+  { value: 'loan', label: 'Loan' },
+]
+
+type Phase = 'idle' | 'assign' | 'processing' | 'summary'
+
+interface QueueItem {
+  file: File
+  account: Account | null
+  result: UploadResult | null
+  error: string | null
+}
 
 export function UploadPage() {
   const [phase, setPhase] = useState<Phase>('idle')
-  const [file, setFile] = useState<File | null>(null)
-  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
-  const [result, setResult] = useState<UploadResult | null>(null)
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [current, setCurrent] = useState(0)
   const [confirmClear, setConfirmClear] = useState(false)
   const { toast } = useToast()
 
   // Manual assets (house, vehicles, …) have no statements, so they're never
-  // import targets — keep them out of the picker and the lone-account fast path.
+  // import targets — keep them out of the picker.
   const accounts = (useLiveQuery(() => db.accounts.toArray()) ?? []).filter((a) => a.type !== 'manual_asset')
-  const uploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
+  const allUploads = useLiveQuery(() => db.uploads.toArray()) ?? []
+  const recentUploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
   const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -53,14 +69,14 @@ export function UploadPage() {
     if (presetName) setSearchParams({}, { replace: true })
   }
 
-  const autoCreateAccount = async (nameOverride?: string, typeOverride?: AccountType): Promise<Account> => {
+  const createAccount = async (name: string, type: AccountType): Promise<Account> => {
     const count = await db.accounts.count()
-    const name = nameOverride || (count === 0 ? 'My Account' : `Account ${count + 1}`)
+    const finalName = name.trim() || (count === 0 ? 'My Account' : `Account ${count + 1}`)
     const color = COLORS[count % COLORS.length]
     const now = new Date()
     const base = {
-      name,
-      type: typeOverride ?? ('checking' as AccountType),
+      name: finalName,
+      type,
       institution: '',
       anchorBalance: 0,
       anchorDate: now,
@@ -72,42 +88,54 @@ export function UploadPage() {
     return { id: id as number, ...base }
   }
 
-  const handleFileDrop = async (f: File) => {
-    setFile(f)
-
-    let account: Account | null = null
-    if (presetName) {
-      account = await autoCreateAccount(presetName, presetType)
-      clearPreset() // consume it so a second drop doesn't create a duplicate
-    } else if (accounts.length === 0) {
-      account = await autoCreateAccount()
-    } else if (accounts.length === 1) {
-      account = accounts[0]
+  // Move the queue pointer to `index`, entering whichever phase that item needs.
+  const startItem = (q: QueueItem[], index: number) => {
+    setQueue(q)
+    if (index >= q.length) {
+      setPhase(q.length > 0 ? 'summary' : 'idle')
+      return
     }
-
-    if (account) {
-      setSelectedAccount(account)
-      setPhase('processing')
-    } else {
-      setPhase('select-account')
-    }
+    setCurrent(index)
+    setPhase(q[index].account ? 'processing' : 'assign')
   }
 
-  const handleAccountSelect = (account: Account) => {
-    setSelectedAccount(account)
+  const handleFilesDrop = async (files: File[]) => {
+    // A preset deep-link means "these statements belong to this new account" —
+    // create it once and assign the whole batch to it.
+    let preset: Account | null = null
+    if (presetName) {
+      preset = await createAccount(presetName, presetType)
+      clearPreset()
+    }
+    const q = files.map((file) => ({ file, account: preset, result: null, error: null }))
+    startItem(q, 0)
+  }
+
+  const handleAssign = (account: Account) => {
+    const q = queue.map((it, i) => (i === current ? { ...it, account } : it))
+    setQueue(q)
     setPhase('processing')
   }
 
-  const handleProcessingComplete = (r: UploadResult) => {
-    setResult(r)
-    setPhase('results')
+  const handleSkipFile = () => {
+    const q = queue.filter((_, i) => i !== current)
+    startItem(q, current)
+  }
+
+  const handleComplete = (result: UploadResult) => {
+    const q = queue.map((it, i) => (i === current ? { ...it, result } : it))
+    startItem(q, current + 1)
+  }
+
+  const handleError = (message: string) => {
+    const q = queue.map((it, i) => (i === current ? { ...it, error: message } : it))
+    startItem(q, current + 1)
   }
 
   const handleReset = () => {
     setPhase('idle')
-    setFile(null)
-    setSelectedAccount(null)
-    setResult(null)
+    setQueue([])
+    setCurrent(0)
     clearPreset()
   }
 
@@ -118,13 +146,22 @@ export function UploadPage() {
     toast('All data cleared')
   }
 
+  const currentItem = queue[current]
+  const queueLabel = queue.length > 1 ? `File ${current + 1} of ${queue.length}` : undefined
+  const completedItems: CompletedUpload[] = queue.map((it) => ({
+    filename: it.file.name,
+    accountName: it.account?.name ?? '',
+    result: it.result,
+    error: it.error,
+  }))
+
   return (
     <div className="min-h-full pb-4">
       <div className="px-4 pt-14 pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-text-primary text-lg font-bold">Upload Statement</h1>
-            <p className="text-text-muted text-xs mt-0.5">Drop a PDF, CSV, OFX, or QFX file</p>
+            <h1 className="text-text-primary text-lg font-bold">Upload Statements</h1>
+            <p className="text-text-muted text-xs mt-0.5">PDF, CSV, OFX, or QFX — as many as you like</p>
           </div>
           {txnCount > 0 && phase === 'idle' && (
             <button
@@ -149,62 +186,52 @@ export function UploadPage() {
                 <span className="text-text-muted"> · {PRESET_TYPE_LABELS[presetType]}</span>
               )}
             </p>
-            <p className="text-text-muted text-[10px] mt-0.5">Drop its statement below to add it.</p>
+            <p className="text-text-muted text-[10px] mt-0.5">Drop its statements below to add it.</p>
           </div>
         )}
 
-        {phase === 'idle' && <DropZone onFile={handleFileDrop} />}
+        {phase === 'idle' && <DropZone onFiles={handleFilesDrop} />}
 
         {phase === 'idle' && <NextImportsCard />}
 
-        {phase === 'select-account' && (
-          <Card>
-            <p className="text-text-primary text-sm font-medium mb-3">Which account is this statement for?</p>
-            <div className="space-y-2">
-              {accounts.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => handleAccountSelect(a)}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-accent/40 hover:bg-bg-elevated transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: a.color + '20', color: a.color }}>
-                    {a.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-text-primary text-sm">{a.name}</p>
-                    <p className="text-text-muted text-[10px]">{a.institution || a.type}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {phase === 'processing' && file && selectedAccount && (
-          <ProcessingView
-            file={file}
-            accountId={selectedAccount.id!}
-            onComplete={handleProcessingComplete}
-            onError={() => handleReset()}
+        {phase === 'assign' && currentItem && (
+          <AssignAccountCard
+            file={currentItem.file}
+            queueLabel={queueLabel}
+            accounts={accounts}
+            suggestedId={suggestAccountForFilename(currentItem.file.name, allUploads)}
+            onSelect={handleAssign}
+            onCreate={async (name, type) => handleAssign(await createAccount(name, type))}
+            onSkip={handleSkipFile}
           />
         )}
 
-        {phase === 'results' && result && (
+        {phase === 'processing' && currentItem?.account && (
+          <ProcessingView
+            file={currentItem.file}
+            accountId={currentItem.account.id!}
+            queueLabel={queueLabel}
+            onComplete={handleComplete}
+            onError={handleError}
+          />
+        )}
+
+        {phase === 'summary' && (
           <UploadResults
-            result={result}
+            items={completedItems}
             onReview={() => navigate('/review')}
             onDone={handleReset}
           />
         )}
 
-        {uploads.length > 0 && phase === 'idle' && (
+        {recentUploads.length > 0 && phase === 'idle' && (
           <div>
             <h3 className="text-text-secondary text-xs font-medium mb-2 flex items-center gap-1.5">
               <Clock size={12} />
               Recent Uploads
             </h3>
             <div className="space-y-2">
-              {uploads.map((u) => (
+              {recentUploads.map((u) => (
                 <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl bg-bg-card border border-border">
                   <FileText size={16} className="text-text-muted flex-shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -231,5 +258,127 @@ export function UploadPage() {
         onCancel={() => setConfirmClear(false)}
       />
     </div>
+  )
+}
+
+function AssignAccountCard({
+  file,
+  queueLabel,
+  accounts,
+  suggestedId,
+  onSelect,
+  onCreate,
+  onSkip,
+}: {
+  file: File
+  queueLabel?: string
+  accounts: Account[]
+  suggestedId: number | null
+  onSelect: (account: Account) => void
+  onCreate: (name: string, type: AccountType) => Promise<void>
+  onSkip: () => void
+}) {
+  const [showForm, setShowForm] = useState(accounts.length === 0)
+  const [name, setName] = useState('')
+  const [type, setType] = useState<AccountType>('checking')
+  const [creating, setCreating] = useState(false)
+
+  // Suggested account first, so the common "12 months of the same account" dump
+  // is one tap per file.
+  const sorted = [...accounts].sort((a, b) => (a.id === suggestedId ? -1 : b.id === suggestedId ? 1 : 0))
+
+  const handleCreate = async () => {
+    if (creating) return
+    setCreating(true)
+    try {
+      await onCreate(name, type)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <Card>
+      <p className="text-text-primary text-sm font-medium">Which account is this statement for?</p>
+      <p className="text-text-muted text-[10px] font-mono mt-1 mb-3 truncate">
+        {queueLabel ? `${queueLabel} · ` : ''}{file.name}
+      </p>
+
+      {accounts.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {sorted.map((a) => (
+            <button
+              key={a.id}
+              onClick={() => onSelect(a)}
+              className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-accent/40 hover:bg-bg-elevated transition-colors text-left"
+            >
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: a.color + '20', color: a.color }}>
+                {a.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-text-primary text-sm truncate">{a.name}</p>
+                <p className="text-text-muted text-[10px]">{a.institution || a.type}</p>
+              </div>
+              {a.id === suggestedId && (
+                <span className="flex items-center gap-1 text-accent text-[10px] font-medium flex-shrink-0">
+                  <Sparkles size={10} />
+                  Suggested
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!showForm && accounts.length > 0 && (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-border hover:border-accent/40 transition-colors text-left text-text-secondary text-sm"
+        >
+          <div className="w-8 h-8 rounded-lg bg-bg-elevated flex items-center justify-center">
+            <Plus size={14} />
+          </div>
+          New account
+        </button>
+      )}
+
+      {showForm && (
+        <div className="space-y-3 p-3 rounded-xl bg-bg-elevated">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Account name (e.g. Chase Checking)"
+            className="w-full px-3 py-2.5 rounded-lg bg-bg-card border border-border text-text-primary text-sm placeholder:text-text-muted focus:outline-none focus:border-accent/50"
+            autoFocus={accounts.length > 0}
+          />
+          <div className="flex gap-1.5 flex-wrap">
+            {NEW_ACCOUNT_TYPES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setType(t.value)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+                  type === t.value
+                    ? 'bg-accent text-white'
+                    : 'bg-bg-card text-text-secondary border border-border'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <Button onClick={handleCreate} disabled={creating} fullWidth>
+            {creating ? 'Creating…' : 'Create & import here'}
+          </Button>
+        </div>
+      )}
+
+      <button
+        onClick={onSkip}
+        className="w-full text-center text-text-muted text-xs mt-3 py-1.5 hover:text-text-secondary transition-colors"
+      >
+        Skip this file
+      </button>
+    </Card>
   )
 }

@@ -3,10 +3,10 @@ import { useDropzone } from 'react-dropzone'
 import { motion } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 
-export function DropZone({ onFile }: { onFile: (file: File) => void }) {
+export function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const onDrop = useCallback((accepted: File[]) => {
-    if (accepted.length > 0) onFile(accepted[0])
-  }, [onFile])
+    if (accepted.length > 0) onFiles(accepted)
+  }, [onFiles])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -16,8 +16,7 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
       'application/x-ofx': ['.ofx'],
       'application/x-qfx': ['.qfx'],
     },
-    maxFiles: 1,
-    multiple: false,
+    multiple: true,
   })
 
   const rootProps = getRootProps()
@@ -35,7 +34,7 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
         }
       `}
     >
-      <input {...getInputProps()} aria-label="Upload bank statement file" />
+      <input {...getInputProps()} aria-label="Upload bank statement files" />
 
       <motion.div
         animate={{ y: isDragActive ? -4 : 0 }}
@@ -49,10 +48,10 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
       </motion.div>
 
       <p className="text-text-primary text-sm font-medium mb-1">
-        {isDragActive ? 'Drop it here' : 'Upload a statement'}
+        {isDragActive ? 'Drop them here' : 'Upload statements'}
       </p>
       <p className="text-text-muted text-xs">
-        Drag & drop or tap to select a PDF, CSV, OFX, or QFX file
+        Drag & drop or tap to select — you can pick several files at once
       </p>
 
       <div className="flex gap-2 mt-4">
