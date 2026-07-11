@@ -6,6 +6,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: '/pocket-advisor/',
+  define: {
+    // Shown in Settings so a user can tell whether their installed PWA
+    // actually picked up the latest deploy.
+    __BUILD_STAMP__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC'),
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

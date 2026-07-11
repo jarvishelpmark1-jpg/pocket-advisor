@@ -62,19 +62,53 @@ interface ColumnMapping {
   balance?: number
 }
 
-function detectColumns(headers: string[]): ColumnMapping | null {
+// In priority order — but see detectDescColumn: a column only wins if its
+// contents actually read like merchant text. Elan/US Bank card CSVs have both
+// "Name" (the merchant) and "Memo" (reference numbers); picking by header
+// alone imported every row with a junk reference string as its description.
+const DESC_CANDIDATES = [
+  'Description', 'Transaction Description', 'Trans Description',
+  'Payee', 'Name', 'Merchant', 'Details', 'Narrative', 'Memo',
+]
+
+function looksLikeText(value: string): boolean {
+  const letters = (value.match(/[A-Za-z]/g) || []).length
+  return letters >= 3 && letters >= value.length * 0.3
+}
+
+function detectDescColumn(headers: string[], rows: string[][]): number {
+  const found: number[] = []
+  for (const c of DESC_CANDIDATES) {
+    const idx = findColumn(headers, [c])
+    if (idx !== -1 && !found.includes(idx)) found.push(idx)
+  }
+  if (found.length === 0) return -1
+
+  const sample = rows.slice(1, 26)
+  for (const idx of found) {
+    let textRows = 0
+    let nonEmpty = 0
+    for (const row of sample) {
+      const v = (row?.[idx] || '').trim()
+      if (!v) continue
+      nonEmpty++
+      if (looksLikeText(v)) textRows++
+    }
+    if (nonEmpty > 0 && textRows / nonEmpty >= 0.5) return idx
+  }
+  return found[0]
+}
+
+function detectColumns(headers: string[], rows: string[][]): ColumnMapping | null {
   const dateCol = findColumn(headers, [
     'Date', 'Transaction Date', 'Trans Date', 'Posted Date', 'Post Date',
     'Posting Date', 'Settlement Date',
   ])
 
-  const descCol = findColumn(headers, [
-    'Description', 'Memo', 'Transaction Description', 'Trans Description',
-    'Payee', 'Name', 'Merchant', 'Details', 'Narrative',
-  ])
+  const descCol = detectDescColumn(headers, rows)
 
   const amountCol = findColumn(headers, [
-    'Amount', 'Transaction Amount', 'Trans Amount',
+    'Amount', 'Transaction Amount', 'Trans Amount', 'Amount (USD)',
   ])
 
   const creditCol = findColumn(headers, [
@@ -86,7 +120,7 @@ function detectColumns(headers: string[]): ColumnMapping | null {
   ])
 
   const typeCol = findColumn(headers, [
-    'Type', 'Transaction Type', 'Trans Type',
+    'Type', 'Transaction Type', 'Trans Type', 'Transaction',
   ])
 
   const balanceCol = findColumn(headers, [
@@ -118,7 +152,7 @@ export function parseCSV(content: string): ParseResult {
 
   const rows = result.data as string[][]
   const headers = rows[0]
-  const mapping = detectColumns(headers)
+  const mapping = detectColumns(headers, rows)
 
   if (!mapping) {
     return { transactions: parseWithoutHeaders(rows), statement: null }

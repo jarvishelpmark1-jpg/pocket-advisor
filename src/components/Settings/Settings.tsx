@@ -234,6 +234,10 @@ export function SettingsPage() {
             Clear All Data
           </button>
         </div>
+
+        <p className="text-text-muted text-[10px] text-center pb-2 font-mono">
+          Build {__BUILD_STAMP__}
+        </p>
       </div>
 
       <AddAccountModal open={showAddAccount} onClose={() => setShowAddAccount(false)} onSave={() => { setShowAddAccount(false); toast('Account added') }} />

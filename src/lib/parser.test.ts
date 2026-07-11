@@ -60,3 +60,40 @@ describe('parseCSV statement balance', () => {
     expect(parseCSV(csv).statement).toBeNull()
   })
 })
+
+describe('parseCSV description column choice', () => {
+  it('prefers the merchant Name column over a reference-number Memo (Elan/US Bank card CSV)', () => {
+    const csv = [
+      'Date,Transaction,Name,Memo,Amount',
+      '2026-01-02,DEBIT,MENARDS 3344 SPRINGFIELD MO,24492156363800935383143; 05300;,-24.97',
+      '2026-01-05,DEBIT,MAVERIK #5193 SPRINGFIELD MO,24492156363800935383144; 05542;,-42.00',
+      '2026-01-15,CREDIT,PAYMENT THANK YOU,24492156363800935383145; 00000;,500.00',
+    ].join('\n')
+    const { transactions } = parseCSV(csv)
+    expect(transactions).toHaveLength(3)
+    expect(transactions[0].description).toBe('MENARDS 3344 SPRINGFIELD MO')
+    expect(transactions[0].amount).toBe(-24.97)
+    expect(transactions[2].description).toBe('PAYMENT THANK YOU')
+    expect(transactions[2].amount).toBe(500)
+  })
+
+  it('still uses Memo when it is the only descriptive column', () => {
+    const csv = [
+      'Date,Memo,Amount',
+      '01/02/2026,STARBUCKS STORE 14442,-6.45',
+    ].join('\n')
+    const { transactions } = parseCSV(csv)
+    expect(transactions[0].description).toBe('STARBUCKS STORE 14442')
+  })
+
+  it('parses Apple Card style headers with Amount (USD)', () => {
+    const csv = [
+      'Transaction Date,Clearing Date,Description,Merchant,Category,Type,Amount (USD)',
+      '01/03/2026,01/04/2026,ACE HARDWARE,ACE HARDWARE,Shopping,Purchase,52.10',
+    ].join('\n')
+    const { transactions } = parseCSV(csv)
+    expect(transactions).toHaveLength(1)
+    expect(transactions[0].description).toBe('ACE HARDWARE')
+    expect(transactions[0].amount).toBe(52.10)
+  })
+})
