@@ -117,3 +117,27 @@ export function detectStatementBalance(lines: { text: string }[], fallbackYear?:
   if (endingBalance === null) return null
   return { endingBalance, endDate: balanceLineDate ?? detectStatementEndDate(lines, fallbackYear) }
 }
+
+const FUTURE_GRACE_MS = 14 * 24 * 60 * 60 * 1000
+
+/**
+ * PDF transaction dates usually omit the year, so parsers fill in the single
+ * year detected on the statement. On a cycle that crosses New Year (Dec 15 –
+ * Jan 14, year detected as the closing year) that lands the December rows a
+ * year in the future. Nothing on a statement can postdate its close — pull any
+ * transaction dated meaningfully after the close (or after today, when the
+ * close is unknown) back one year.
+ */
+export function fixFutureDates<T extends { date: Date }>(
+  transactions: T[],
+  statementEnd: Date | null,
+  now: Date = new Date()
+): T[] {
+  const limit = (statementEnd ?? now).getTime() + FUTURE_GRACE_MS
+  return transactions.map(t => {
+    if (t.date.getTime() <= limit) return t
+    const date = new Date(t.date)
+    date.setFullYear(date.getFullYear() - 1)
+    return { ...t, date }
+  })
+}

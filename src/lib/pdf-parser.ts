@@ -1,6 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import type { ParsedTransaction, ParseResult } from './types'
-import { detectStatementBalance } from './statement-detect'
+import { detectStatementBalance, fixFutureDates } from './statement-detect'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -147,14 +147,19 @@ export async function parsePDF(data: ArrayBuffer): Promise<ParseResult> {
     parseByAmountAtEnd,
   ]
 
+  const finish = (results: ParsedTransaction[]): ParseResult => ({
+    transactions: fixFutureDates(results, statement?.endDate ?? null),
+    statement,
+  })
+
   for (const strategy of strategies) {
     const results = strategy(allLines, year)
-    if (results.length >= 3) return { transactions: results, statement }
+    if (results.length >= 3) return finish(results)
   }
 
   for (const strategy of strategies) {
     const results = strategy(allLines, year)
-    if (results.length > 0) return { transactions: results, statement }
+    if (results.length > 0) return finish(results)
   }
 
   return { transactions: [], statement }

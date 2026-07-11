@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectStatementBalance } from './statement-detect'
+import { detectStatementBalance, fixFutureDates } from './statement-detect'
 
 const lines = (...texts: string[]) => texts.map((text) => ({ text }))
 
@@ -44,5 +44,32 @@ describe('detectStatementBalance', () => {
 
   it('returns null with no balance line at all', () => {
     expect(detectStatementBalance(lines('Thank you for banking with us'))).toBeNull()
+  })
+})
+
+describe('fixFutureDates', () => {
+  const txn = (date: Date, description = 'x') => ({ date, description, amount: -1 })
+
+  it('pulls December rows on a Dec–Jan statement back to the prior year', () => {
+    const close = new Date(2026, 0, 14) // Jan 14, 2026
+    const fixed = fixFutureDates(
+      [txn(new Date(2026, 11, 28)), txn(new Date(2026, 0, 3))], // 12/28 misparsed as 2026
+      close,
+    )
+    expect(fixed[0].date).toEqual(new Date(2025, 11, 28))
+    expect(fixed[1].date).toEqual(new Date(2026, 0, 3))
+  })
+
+  it('leaves dates within the grace window after the close alone', () => {
+    const close = new Date(2026, 5, 8)
+    const fixed = fixFutureDates([txn(new Date(2026, 5, 10))], close)
+    expect(fixed[0].date).toEqual(new Date(2026, 5, 10))
+  })
+
+  it('uses today as the limit when the close date is unknown', () => {
+    const now = new Date(2026, 6, 10)
+    const fixed = fixFutureDates([txn(new Date(2026, 10, 3)), txn(new Date(2026, 5, 1))], null, now)
+    expect(fixed[0].date).toEqual(new Date(2025, 10, 3))
+    expect(fixed[1].date).toEqual(new Date(2026, 5, 1))
   })
 })
