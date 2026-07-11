@@ -1,9 +1,12 @@
-import * as pdfjsLib from 'pdfjs-dist'
+// The legacy build supports older Safari — the modern build needs APIs
+// (Promise.withResolvers etc.) that iPhones a couple of iOS versions back
+// don't have, which made every PDF upload fail on those phones.
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { ParsedTransaction, ParseResult } from './types'
 import { detectStatementBalance, fixFutureDates } from './statement-detect'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
+  'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString()
 

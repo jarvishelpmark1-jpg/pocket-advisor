@@ -41,7 +41,15 @@ export async function processUpload(
   if (fileType === 'pdf') {
     onProgress?.(5)
     const buffer = await file.arrayBuffer()
-    const r = await parsePDF(buffer)
+    let r: Awaited<ReturnType<typeof parsePDF>>
+    try {
+      r = await parsePDF(buffer)
+    } catch (err) {
+      // Surface the engine's own error — "could not extract transactions" hides
+      // whether the PDF never opened at all (corrupt file, unsupported browser).
+      const detail = err instanceof Error ? err.message : String(err)
+      throw new Error(`Couldn't open this PDF (${detail}). If this keeps happening, try downloading a CSV from your bank instead.`)
+    }
     parsed = r.transactions
     statement = r.statement
   } else {
