@@ -53,6 +53,17 @@ export async function processUpload(
   const account = await db.accounts.get(accountId)
   const priorTxnCount = await db.transactions.where('accountId').equals(accountId).count()
 
+  // Card/loan statements usually print charges as positive numbers (OFX and
+  // some banks' CSVs sign them instead). Imported as-is, every charge would
+  // read as income — so on a liability account where positives dominate, flip
+  // all signs: spending becomes negative, payments/refunds positive.
+  if (account && isLiability(account.type)) {
+    const positives = parsed.filter(p => p.amount > 0).length
+    if (positives / parsed.length > 0.6) {
+      parsed = parsed.map(p => ({ ...p, amount: -p.amount }))
+    }
+  }
+
   const upload = await db.uploads.add({
     accountId,
     filename: file.name,
@@ -72,12 +83,16 @@ export async function processUpload(
     const p = parsed[i]
     onProgress?.(Math.round(10 + ((i + 1) / parsed.length) * 80))
 
-    const existing = await db.transactions
+    // A row already in the ledger from a *different* upload (or entered
+    // manually) is a re-import — skip it. A match from THIS upload means the
+    // file itself lists the transaction twice (two same-price coffees the same
+    // day), which is real activity, not a duplicate.
+    const matches = await db.transactions
       .where('[accountId+date+amount+description]')
       .equals([accountId, p.date, p.amount, p.description])
-      .first()
+      .toArray()
 
-    if (existing) {
+    if (matches.some(m => m.uploadId !== (upload as number))) {
       duplicatesSkipped++
       continue
     }

@@ -50,6 +50,94 @@ beforeEach(async () => {
   await clearAllData()
 })
 
+function csvFile(name: string, rows: string[]): File {
+  return new File([['Date,Description,Amount', ...rows].join('\n')], name, { type: 'text/csv' })
+}
+
+describe('processUpload sign normalization', () => {
+  it('flips signs on a credit card statement that prints charges as positive', async () => {
+    const id = await addAccount('credit')
+    const result = await processUpload(
+      csvFile('amex.csv', [
+        '03/02/2026,WHOLE FOODS MARKET,95.67',
+        '03/03/2026,UBER EATS,42.30',
+        '03/05/2026,DELTA AIR LINES,487.00',
+        '03/10/2026,MOBILE PAYMENT - THANK YOU,-500.00',
+      ]),
+      id,
+    )
+
+    expect(result.total).toBe(4)
+    const txns = await db.transactions.where('accountId').equals(id).toArray()
+    const byDesc = Object.fromEntries(txns.map(t => [t.description, t.amount]))
+    expect(byDesc['WHOLE FOODS MARKET']).toBe(-95.67) // charge = spend
+    expect(byDesc['MOBILE PAYMENT - THANK YOU']).toBe(500) // payment = money in
+  })
+
+  it('leaves an already-signed credit card statement alone', async () => {
+    const id = await addAccount('credit')
+    await processUpload(
+      csvFile('chase-card.csv', [
+        '03/02/2026,TRADER JOES,-87.34',
+        '03/03/2026,SHELL OIL,-48.72',
+        '03/10/2026,AUTOMATIC PAYMENT,500.00',
+      ]),
+      id,
+    )
+
+    const txns = await db.transactions.where('accountId').equals(id).toArray()
+    const byDesc = Object.fromEntries(txns.map(t => [t.description, t.amount]))
+    expect(byDesc['TRADER JOES']).toBe(-87.34)
+    expect(byDesc['AUTOMATIC PAYMENT']).toBe(500)
+  })
+
+  it('never flips signs on an asset account, even when deposits dominate', async () => {
+    const id = await addAccount('checking')
+    await processUpload(
+      csvFile('savings.csv', [
+        '03/01/2026,DIRECT DEPOSIT PAYROLL,2000.00',
+        '03/15/2026,DIRECT DEPOSIT PAYROLL,2000.00',
+        '03/20/2026,INTEREST PAID,4.10',
+      ]),
+      id,
+    )
+
+    const txns = await db.transactions.where('accountId').equals(id).toArray()
+    expect(txns.every(t => t.amount > 0)).toBe(true)
+  })
+})
+
+describe('processUpload duplicate handling', () => {
+  it('keeps identical same-day transactions listed twice in one file', async () => {
+    const id = await addAccount('checking')
+    const result = await processUpload(
+      csvFile('march.csv', [
+        '03/04/2026,STARBUCKS STORE 14442,-6.45',
+        '03/04/2026,STARBUCKS STORE 14442,-6.45',
+      ]),
+      id,
+    )
+
+    expect(result.total).toBe(2)
+    expect(result.duplicatesSkipped).toBe(0)
+  })
+
+  it('skips every row when the same file is uploaded twice', async () => {
+    const id = await addAccount('checking')
+    const rows = [
+      '03/04/2026,STARBUCKS STORE 14442,-6.45',
+      '03/04/2026,STARBUCKS STORE 14442,-6.45',
+      '03/05/2026,TRADER JOES,-87.34',
+    ]
+    await processUpload(csvFile('march.csv', rows), id)
+    const again = await processUpload(csvFile('march.csv', rows), id)
+
+    expect(again.total).toBe(0)
+    expect(again.duplicatesSkipped).toBe(3)
+    expect(await db.transactions.where('accountId').equals(id).count()).toBe(3)
+  })
+})
+
 describe('processUpload re-anchoring', () => {
   it('adopts an asset statement balance on the first import (even if dated in the past)', async () => {
     const id = await addAccount('checking')
