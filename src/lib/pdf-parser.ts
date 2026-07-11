@@ -317,6 +317,11 @@ function cleanPdfDescription(desc: string): string {
     .replace(/\s+/g, ' ')
     .replace(/^[\s\-*]+/, '')
     .replace(/[\s\-*]+$/, '')
+    // Card statements often lead with "<txn date> <ref#> MERCHANT" (the parser
+    // already consumed the posting date) — drop that noise so the merchant name
+    // comes first on review cards and in classification.
+    .replace(/^\d{1,2}[/-]\d{1,2}\s+/, '')
+    .replace(/^\d{3,5}\s+/, '')
     .replace(/\d{10,}/g, '')
     .trim()
   // A description that was all reference numbers cleans down to nothing —

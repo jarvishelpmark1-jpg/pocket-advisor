@@ -8,6 +8,26 @@ import type { Transaction, UploadResult, ParsedTransaction, StatementMetadata } 
 
 const AUTO_REVIEW_THRESHOLD = 0.7
 
+// The same transaction exported two ways (PDF statement vs OFX/CSV download)
+// prints different description strings — "2270 - DAVIS SUPPLY EDMOND OK" vs
+// "DAVIS SUPPLY EDMOND". With date and amount already equal, a strong word
+// overlap means it's the same money, not a coincidence.
+function descTokens(s: string): Set<string> {
+  return new Set(
+    s.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/)
+      .filter((w) => w.length >= 3 && /[A-Z]/.test(w))
+  )
+}
+
+function looksLikeSameTransaction(a: string, b: string): boolean {
+  const ta = descTokens(a)
+  const tb = descTokens(b)
+  if (ta.size === 0 || tb.size === 0) return false
+  let shared = 0
+  for (const w of ta) if (tb.has(w)) shared++
+  return shared / Math.min(ta.size, tb.size) >= 0.5
+}
+
 export async function processUpload(
   file: File,
   accountId: number,
@@ -84,15 +104,22 @@ export async function processUpload(
     onProgress?.(Math.round(10 + ((i + 1) / parsed.length) * 80))
 
     // A row already in the ledger from a *different* upload (or entered
-    // manually) is a re-import — skip it. A match from THIS upload means the
-    // file itself lists the transaction twice (two same-price coffees the same
-    // day), which is real activity, not a duplicate.
-    const matches = await db.transactions
+    // manually) is a re-import — skip it. That covers the exact same file
+    // re-uploaded, and the same period exported in two formats (descriptions
+    // differ but date+amount+most words agree). A match from THIS upload means
+    // the file itself lists the transaction twice (two same-price coffees the
+    // same day), which is real activity, not a duplicate.
+    const sameDateAmount = await db.transactions
       .where('[accountId+date+amount+description]')
-      .equals([accountId, p.date, p.amount, p.description])
+      .between([accountId, p.date, p.amount, ''], [accountId, p.date, p.amount, '￿'], true, true)
       .toArray()
 
-    if (matches.some(m => m.uploadId !== (upload as number))) {
+    const isDuplicate = sameDateAmount.some(
+      (m) =>
+        m.uploadId !== (upload as number) &&
+        (m.description === p.description || looksLikeSameTransaction(m.description, p.description))
+    )
+    if (isDuplicate) {
       duplicatesSkipped++
       continue
     }

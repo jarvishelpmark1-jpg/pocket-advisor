@@ -228,3 +228,31 @@ describe('processUpload re-anchoring', () => {
     expect(await db.monthlySnapshots.count()).toBeGreaterThan(1)
   })
 })
+
+describe('processUpload cross-format duplicate handling', () => {
+  it('skips the same transaction re-imported with a truncated OFX description', async () => {
+    const id = await addAccount('credit')
+    await processUpload(
+      csvFile('statement.csv', ['04/16/2026,2270 - DAVIS SUPPLY EDMOND OK,-648.30']),
+      id,
+    )
+    const ofx = await processUpload(
+      ofxFile('download.ofx', {
+        bal: '-648.30',
+        dtasof: '20260430',
+        txns: [{ type: 'DEBIT', date: '20260416', amt: '-648.30', name: 'DAVIS SUPPLY EDMOND' }],
+      }),
+      id,
+    )
+    expect(ofx.total).toBe(0)
+    expect(ofx.duplicatesSkipped).toBe(1)
+  })
+
+  it('keeps distinct same-day same-amount transactions from different merchants', async () => {
+    const id = await addAccount('checking')
+    await processUpload(csvFile('a.csv', ['04/16/2026,STARBUCKS STORE 14442,-25.00']), id)
+    const b = await processUpload(csvFile('b.csv', ['04/16/2026,SHELL OIL 57442,-25.00']), id)
+    expect(b.total).toBe(1)
+    expect(b.duplicatesSkipped).toBe(0)
+  })
+})

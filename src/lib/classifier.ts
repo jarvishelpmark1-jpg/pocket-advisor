@@ -11,19 +11,22 @@ const KEYWORD_MAP: Record<string, CategoryId> = {
   'BISTRO': 'dining', 'TAVERN': 'dining', 'PUB ': 'dining', 'DINER': 'dining',
   'BAKERY': 'dining', 'EATERY': 'dining', 'KITCHEN': 'dining', 'TAQUERIA': 'dining',
   'BURRITO': 'dining', 'WINGS': 'dining', 'BBQ': 'dining', 'STEAKHOUSE': 'dining',
-  'RAMEN': 'dining', 'POKE': 'dining', 'SMOOTHIE': 'dining', 'DONUT': 'dining',
+  'RAMEN': 'dining', 'POKE ': 'dining', 'SMOOTHIE': 'dining', 'DONUT': 'dining',
   'BAGEL': 'dining', 'SANDWICH': 'dining', 'CATERING': 'dining',
   'NOODLE': 'dining', 'WOK ': 'dining', 'THAI ': 'dining',
 
   'GAS STATION': 'transportation', 'FUEL': 'transportation', 'GASOLINE': 'transportation',
-  'PETROL': 'transportation',
+  'PETROL': 'transportation', 'GAS': 'transportation',
 
-  'ELECTRIC': 'utilities', 'WATER BILL': 'utilities', 'INTERNET': 'utilities',
+  'ELECTRIC BILL': 'utilities', 'ELECTRIC CO': 'utilities', 'WATER BILL': 'utilities', 'INTERNET': 'utilities',
   'CABLE': 'utilities', 'PHONE BILL': 'utilities', 'WIRELESS': 'utilities',
   'BROADBAND': 'utilities', 'SEWER': 'utilities', 'TRASH': 'utilities',
   'WASTE MGMT': 'utilities', 'WASTE MANAGEMENT': 'utilities',
+  'SANITATION': 'utilities', 'DISPOSAL': 'utilities', 'RECYCL': 'utilities',
+  'UTILIT': 'utilities', 'CITYUTIL': 'utilities', 'WASTE': 'utilities',
+  'LANDFILL': 'utilities',
 
-  'DOCTOR': 'healthcare', 'HOSPITAL': 'healthcare', 'MEDICAL': 'healthcare',
+  'DOCTOR': 'healthcare', 'HOSPITAL ': 'healthcare', 'MEDICAL': 'healthcare',
   'PHARMACY': 'healthcare', 'CLINIC': 'healthcare', 'URGENT CARE': 'healthcare',
   'DENTIST': 'healthcare', 'DENTAL': 'healthcare', 'THERAPY': 'healthcare',
   'CHIROPR': 'healthcare', 'DERMAT': 'healthcare', 'OPTOM': 'healthcare',
@@ -36,8 +39,11 @@ const KEYWORD_MAP: Record<string, CategoryId> = {
   'AMAZON': 'shopping', 'ONLINE PURCHASE': 'shopping', 'RETAIL': 'shopping',
   'OUTLET': 'shopping', 'APPAREL': 'shopping', 'FURNITURE': 'shopping',
   'HARDWARE': 'shopping', 'JEWELRY': 'shopping',
+  'LUMBER': 'shopping', 'TILE': 'shopping', 'SUPPLY': 'shopping',
+  'DRYWALL': 'shopping', 'CONCRETE': 'shopping', 'ROOFING': 'shopping',
+  'HDW': 'shopping',
 
-  'INSURANCE': 'insurance', 'PREMIUM': 'insurance',
+  'INSURANCE': 'insurance',
 
   'TUITION': 'education', 'SCHOOL': 'education', 'UNIVERSITY': 'education',
   'COLLEGE': 'education',
@@ -48,19 +54,22 @@ const KEYWORD_MAP: Record<string, CategoryId> = {
   'PET ': 'pets', 'VET ': 'pets', 'VETERINAR': 'pets', 'KENNEL': 'pets',
 
   'DONATION': 'gifts_donations', 'CHARITY': 'gifts_donations', 'TITHE': 'gifts_donations',
-  'CHURCH': 'gifts_donations', 'NONPROFIT': 'gifts_donations', 'OFFERING': 'gifts_donations',
+  'CHURCH ': 'gifts_donations', 'NONPROFIT': 'gifts_donations', 'OFFERING': 'gifts_donations',
 
   'HOTEL': 'travel', 'MOTEL': 'travel', 'AIRLINE': 'travel', 'FLIGHT': 'travel',
   'RESORT': 'travel', 'CRUISE': 'travel', 'AIRPORT': 'travel',
 
   'RENT ': 'housing', 'MORTGAGE': 'housing', 'LEASE ': 'housing',
-  'LANDLORD': 'housing', 'HOA ': 'housing',
+  'LANDLORD': 'housing', 'HOA ': 'housing', 'MTG': 'housing',
 
   'SUBSCRIPTION': 'subscriptions', 'MEMBERSHIP': 'subscriptions',
 
   'OVERDRAFT': 'fees', 'NSF': 'fees', 'INSUFFICIENT': 'fees',
   'LATE FEE': 'fees', 'PENALTY': 'fees', 'SERVICE FEE': 'fees',
   'MAINTENANCE FEE': 'fees', 'MONTHLY FEE': 'fees',
+  'CPA': 'fees', 'ACCOUNTING': 'fees', 'LICENSING': 'fees', 'TAX PREP': 'fees',
+  'NOTARY': 'fees', 'PERMIT': 'fees', 'LLP': 'fees', 'ATTORNEY': 'fees',
+  'LAW OFFICE': 'fees',
 
   'STUDENT LOAN': 'debt_payment', 'LOAN PMT': 'debt_payment',
   'MINIMUM PAYMENT': 'debt_payment',
@@ -108,10 +117,20 @@ function cleanForClassification(description: string): string {
   return d
 }
 
+// Substring matching burned us on real data ("RETIREMENT" hit TIRE, "TREATMENT"
+// hit ATM), so keywords match at word starts. Short keys and keys written with a
+// trailing space also require the word to END there ("BAR " must not hit BARN);
+// longer keys stay open-ended so BREW still hits BREWERY.
+const KEYWORD_MATCHERS: [RegExp, CategoryId][] = Object.entries(KEYWORD_MAP).map(([key, category]) => {
+  const exact = key !== key.trimEnd() || key.trim().length <= 3
+  const source = key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+  return [new RegExp(`\\b${source}${exact ? '\\b' : ''}`, 'i'), category]
+})
+
 function classifyByKeywords(description: string): ClassificationResult | null {
   const cleaned = cleanForClassification(description)
-  for (const [keyword, category] of Object.entries(KEYWORD_MAP)) {
-    if (cleaned.includes(keyword)) {
+  for (const [pattern, category] of KEYWORD_MATCHERS) {
+    if (pattern.test(cleaned)) {
       return {
         categoryId: category,
         confidence: 0.85,
@@ -213,6 +232,17 @@ export async function classifyTransaction(
 
   const userResult = await classifyByUserRules(desc)
   if (userResult) return userResult
+
+  // A deposit that reads like pay must win over merchant/keyword matches —
+  // "L E COX MEDICAL DES:PAYROLL" is a paycheck, not a medical bill. Only
+  // strong income signals (>=0.9) preempt; weak ones still defer to merchants.
+  if (txn.amount > 0) {
+    for (const [pattern, category, conf] of INCOME_PATTERNS) {
+      if (conf >= 0.9 && pattern.test(cleaned)) {
+        return { categoryId: category, confidence: conf, source: 'pattern', merchantName: null }
+      }
+    }
+  }
 
   const merchantResult = matchMerchant(desc)
   if (merchantResult) {
