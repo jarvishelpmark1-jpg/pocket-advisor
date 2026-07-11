@@ -313,10 +313,13 @@ function parseByAmountAtEnd(lines: TextLine[], fallbackYear?: number): ParsedTra
 }
 
 function cleanPdfDescription(desc: string): string {
-  return desc
+  const cleaned = desc
     .replace(/\s+/g, ' ')
     .replace(/^[\s\-*]+/, '')
     .replace(/[\s\-*]+$/, '')
     .replace(/\d{10,}/g, '')
     .trim()
+  // A description that was all reference numbers cleans down to nothing —
+  // better to keep the raw text than import a row with no context at all.
+  return cleaned || desc.replace(/\s+/g, ' ').trim()
 }

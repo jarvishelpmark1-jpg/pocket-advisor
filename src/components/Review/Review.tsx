@@ -1,14 +1,16 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, ListChecks, Layers } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../../lib/db'
 import { useUnreviewedTransactions } from '../../hooks/useTransactions'
 import { ReviewCard } from './ReviewCard'
 import { CategoryGrid } from './CategoryGrid'
 import { EmptyState } from '../shared/EmptyState'
 import { ProgressBar } from '../shared/ProgressBar'
 import { useToast } from '../../hooks/useToast'
-import { formatCurrency } from '../../lib/formatters'
-import type { Transaction, CategoryId } from '../../lib/types'
+import { formatCurrency, formatDate } from '../../lib/formatters'
+import type { Transaction, CategoryId, Account } from '../../lib/types'
 import { updateTransactionCategory, batchUpdateCategory } from '../../hooks/useTransactions'
 
 export function ReviewPage() {
@@ -17,6 +19,8 @@ export function ReviewPage() {
   const [mode, setMode] = useState<'single' | 'batch'>('single')
   const [completedCount, setCompletedCount] = useState(0)
   const { toast } = useToast()
+  const accounts = useLiveQuery(() => db.accounts.toArray()) ?? []
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
 
   const grouped = useMemo(() => {
     if (!transactions) return []
@@ -134,6 +138,7 @@ export function ReviewPage() {
             >
               <ReviewCard
                 transaction={current}
+                account={accountById.get(current.accountId)}
                 onClassify={(catId) => handleClassify(current, catId)}
                 onSkip={handleSkip}
                 remaining={total - currentIdx}
@@ -154,6 +159,7 @@ export function ReviewPage() {
                   key={key}
                   name={key}
                   transactions={txns}
+                  accountById={accountById}
                   onClassify={(catId) => handleBatchClassify(txns, catId)}
                 />
               ))
@@ -169,10 +175,12 @@ export function ReviewPage() {
 function BatchGroup({
   name,
   transactions,
+  accountById,
   onClassify,
 }: {
   name: string
   transactions: Transaction[]
+  accountById: Map<number | undefined, Account>
   onClassify: (catId: CategoryId) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -203,7 +211,24 @@ function BatchGroup({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden border-t border-border"
           >
-            <div className="p-4">
+            <div className="p-4 space-y-3">
+              <div className="space-y-1.5">
+                {transactions.map((t) => {
+                  const acct = accountById.get(t.accountId)
+                  return (
+                    <div key={t.id} className="flex items-start gap-2 text-[11px]">
+                      <span className="text-text-muted flex-shrink-0 font-mono">{formatDate(t.date)}</span>
+                      <span className="text-text-secondary flex-1 min-w-0 break-words leading-snug">
+                        {(t.originalDescription || t.description).replace(/\s+/g, ' ').trim()}
+                        {acct && <span className="text-text-muted"> · {acct.name}</span>}
+                      </span>
+                      <span className={`flex-shrink-0 font-mono ${t.amount > 0 ? 'text-income' : 'text-text-primary'}`}>
+                        {t.amount > 0 ? '+' : ''}{formatCurrency(t.amount)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
               <CategoryGrid onSelect={onClassify} suggestedId={transactions[0]?.categoryId} />
             </div>
           </motion.div>
