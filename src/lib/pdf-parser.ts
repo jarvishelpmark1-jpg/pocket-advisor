@@ -1,6 +1,7 @@
-// The legacy build supports older Safari — the modern build needs APIs
-// (Promise.withResolvers etc.) that iPhones a couple of iOS versions back
-// don't have, which made every PDF upload fail on those phones.
+// Pinned to pdf.js v4: its legacy build still bundles core-js polyfills, so it
+// runs on iPhones that lack Promise.withResolvers / iterator helpers (v5
+// removed the polyfills — "undefined is not a function" on iOS <18.4 — and
+// v3's older text extraction couldn't read some card statements at all).
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { ParsedTransaction, ParseResult } from './types'
 import { detectStatementBalance, fixFutureDates } from './statement-detect'
@@ -55,7 +56,7 @@ async function extractTextFromPDF(data: ArrayBuffer): Promise<TextLine[][]> {
     const lines: TextLine[] = Array.from(lineMap.entries())
       .sort((a, b) => b[0] - a[0])
       .map(([y, lineItems]) => {
-        const sorted = lineItems.sort((a, b) => a.x - b.x)
+        const sorted = mergeDateFragments(lineItems.sort((a, b) => a.x - b.x))
         return {
           y,
           items: sorted,
@@ -68,6 +69,29 @@ async function extractTextFromPDF(data: ArrayBuffer): Promise<TextLine[][]> {
   }
 
   return allPages
+}
+
+// pdf.js can emit a date as separate text runs — "04","/","28" (and a 4-digit
+// year split as "20","26") — which breaks every date-anchored strategy. Stitch
+// those fragments back into one item before line text is built.
+function mergeDateFragments(items: TextItem[]): TextItem[] {
+  const out: TextItem[] = []
+  for (const item of items) {
+    const prev = out[out.length - 1]
+    const cur = item.str.trim()
+    const before = prev?.str.trimEnd() ?? ''
+    if (
+      prev &&
+      ((/^[/-]$/.test(cur) && /\d$/.test(before)) || // separator after digits
+        (/^\d{1,4}$/.test(cur) && /[/-]$/.test(before)) || // digits after separator
+        (/^\d{2}$/.test(cur) && /\d{1,2}[/-]\d{1,2}[/-]\d{2}$/.test(before))) // split 4-digit year
+    ) {
+      prev.str = before + cur
+      continue
+    }
+    out.push({ ...item })
+  }
+  return out
 }
 
 const DATE_PATTERN = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/
