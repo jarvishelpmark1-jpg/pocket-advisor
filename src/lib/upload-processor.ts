@@ -212,12 +212,17 @@ export async function processUpload(
   let anchorUpdated: UploadResult['anchorUpdated'] = null
   if (account && statement) {
     const anchorDate = statement.endDate ?? periodEnd
-    // Adopt on the account's first import (its anchor is just a seed); afterwards
-    // only adopt a newer statement, so re-uploading an old one can't clobber a
-    // more-recent known balance.
+    // Adopt on the account's first import, and afterwards only adopt a newer
+    // statement, so re-uploading an old one can't clobber a more-recent known
+    // balance. A creation-seed anchor ($0 stamped "today") is not knowledge —
+    // any statement balance beats it, even one dated in the past; otherwise an
+    // account that started from balance-less CSVs could never anchor at all.
+    const seedAnchor =
+      account.anchorBalance === 0 &&
+      Math.abs(account.anchorDate.getTime() - account.createdAt.getTime()) < 24 * 60 * 60 * 1000
     const adopt =
       anchorDate !== null &&
-      (priorTxnCount === 0 || anchorDate.getTime() > account.anchorDate.getTime())
+      (priorTxnCount === 0 || seedAnchor || anchorDate.getTime() > account.anchorDate.getTime())
     if (adopt && anchorDate) {
       const liability = isLiability(account.type)
       // anchorBalance is stored in natural terms: cash for assets, amount owed

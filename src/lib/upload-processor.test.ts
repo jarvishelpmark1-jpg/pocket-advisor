@@ -256,3 +256,25 @@ describe('processUpload cross-format duplicate handling', () => {
     expect(b.duplicatesSkipped).toBe(0)
   })
 })
+
+describe('processUpload seed-anchor adoption', () => {
+  it('lets a past-dated statement balance replace a never-set seed anchor', async () => {
+    const id = await addAccount('credit')
+    // first import: CSV with no balance — account stays on its $0 seed
+    await processUpload(csvFile('card.csv', ['01/05/2026,STORE PURCHASE,-50.00']), id)
+    expect((await db.accounts.get(id))?.anchorBalance).toBe(0)
+
+    // second import: statement carrying a balance dated BEFORE the seed date
+    const result = await processUpload(
+      ofxFile('jan.ofx', {
+        bal: '-1272.22',
+        dtasof: '20260131',
+        txns: [{ type: 'DEBIT', date: '20260110', amt: '-25.00', name: 'Other Store' }],
+      }),
+      id,
+    )
+
+    expect(result.anchorUpdated?.balance).toBe(1272.22)
+    expect((await db.accounts.get(id))?.anchorBalance).toBe(1272.22)
+  })
+})
