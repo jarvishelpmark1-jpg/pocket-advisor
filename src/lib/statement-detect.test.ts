@@ -73,3 +73,27 @@ describe('fixFutureDates', () => {
     expect(fixed[1].date).toEqual(new Date(2026, 5, 1))
   })
 })
+
+describe('Apple Card statement (real layout, 2026-07-12)', () => {
+  it('reads Total Balance and the textual as-of close date, skipping previous balances', () => {
+    const s = detectStatementBalance(
+      lines(
+        'Your January Balance',
+        'as of Jan 31, 2026',
+        'Previous Monthly Balance $3,749.14',
+        'Previous Total Balance $3,749.14',
+        'Total Balance $1,272.22',
+        'Total payments for this period -$3,749.14',
+      ),
+    )
+    expect(s?.endingBalance).toBe(1272.22)
+    expect(s?.endDate?.getFullYear()).toBe(2026)
+    expect(s?.endDate?.getMonth()).toBe(0)
+    expect(s?.endDate?.getDate()).toBe(31)
+  })
+
+  it('still prefers a bank "New Balance" over a generic total', () => {
+    const s = detectStatementBalance(lines('Total Balance $999.99', 'New Balance $1,234.56'))
+    expect(s?.endingBalance).toBe(1234.56)
+  })
+})

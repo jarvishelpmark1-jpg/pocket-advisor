@@ -52,7 +52,9 @@ function parseDateFlexible(s: string, fallbackYear?: number): Date | null {
 }
 
 const BALANCE_EXCLUDE = /(beginning|opening|previous|prior|available|minimum|average|year[- ]?to[- ]?date|ytd)/i
-const BALANCE_TIERS = [/new\s+balance/i, /ending\s+balance/i, /closing\s+balance/i, /statement\s+balance/i]
+// "total balance" last: it's Apple Card's wording for the close ("Total
+// Balance $1,272.22") but generic enough that bank-specific phrasings must win.
+const BALANCE_TIERS = [/new\s+balance/i, /ending\s+balance/i, /closing\s+balance/i, /statement\s+balance/i, /total\s+balance/i]
 
 function lastMoneyOnLine(text: string): number | null {
   const matches = text.match(new RegExp(MONEY_PATTERN.source, 'g'))
@@ -70,6 +72,8 @@ function detectStatementEndDate(lines: { text: string }[], fallbackYear?: number
   const singlePatterns = [
     /(?:statement|closing|ending|billing)\s*(?:cycle\s*)?(?:date|period)?\D{0,16}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
     /as of\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    // Apple Card dates the close textually on its own line: "as of Jan 31, 2026"
+    /as of\s+([A-Za-z]{3,9}\.?\s+\d{1,2},?\s*\d{4})/i,
     /(?:statement|closing|billing)\s*(?:cycle\s*)?(?:date|period|ending)?\D{0,8}([A-Za-z]{3,9}\.?\s+\d{1,2},?\s*\d{4})/i,
   ]
   for (const line of lines) {
