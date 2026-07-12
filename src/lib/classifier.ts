@@ -190,7 +190,8 @@ async function classifyByUserRules(description: string): Promise<ClassificationR
 const TRANSFER_PATTERNS = [
   /\bTRANSFER\b/i, /\bXFER\b/i, /\bTFR\b/i, /\bONLINE\s*TRANSFER/i,
   /\bBETWEEN\s*ACCT/i, /\bINTERNAL\s*TRANSFER/i,
-  /\bWIRE\s*(IN|OUT|TRANSFER)/i, /\bACH\s*TRANSFER/i,
+  // banks truncate: "DES:ACH TRANSF" — match the stem, not just the full word
+  /\bWIRE\s*(IN|OUT|TRANSFER)/i, /\bACH\s*TRANSF/i,
 ]
 
 function isLikelyTransfer(description: string): boolean {

@@ -151,3 +151,19 @@ describe('real-statement regressions (2026-07-11)', () => {
     expect((await classifyTransaction(t('MOES SOUTHWEST GRILL #123', -12.40))).categoryId).toBe('dining')
   })
 })
+
+describe('real-backup regressions (2026-07-12)', () => {
+  const t = (description: string, amount: number) => ({ date: new Date(2026, 5, 10), description, amount })
+
+  it('codes brokerage ACH moves as transfers, not salary', async () => {
+    const r = await classifyTransaction(t('INTERACTIVE BROK DES:ACH TRANSF ID:REQ :XXXXXXXXX INDN:ZACH ROBERT GAGNON CO', 1600))
+    expect(r.categoryId).toBe('transfer')
+    const out = await classifyTransaction(t('FIDELITY DES:ACH TRANSF', -2000))
+    expect(out.categoryId).toBe('transfer')
+  })
+
+  it('codes Apple Daily Cash as cashback, not generic income', async () => {
+    expect((await classifyTransaction(t('Daily Cash Deposit', 4.52))).categoryId).toBe('income_refund')
+    expect((await classifyTransaction(t('DAILY CASH ADJUSTMENT', 0.61))).categoryId).toBe('income_refund')
+  })
+})

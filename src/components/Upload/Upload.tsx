@@ -150,7 +150,7 @@ export function UploadPage() {
   const queueLabel = queue.length > 1 ? `File ${current + 1} of ${queue.length}` : undefined
   const completedItems: CompletedUpload[] = queue.map((it) => ({
     filename: it.file.name,
-    accountName: it.account?.name ?? '',
+    account: it.account,
     result: it.result,
     error: it.error,
   }))

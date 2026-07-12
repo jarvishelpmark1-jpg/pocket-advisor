@@ -9,6 +9,7 @@ import { formatMonthLong } from '../../lib/formatters'
 import { NetWorthCard } from './NetWorthCard'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
 import { CoverageCard } from './CoverageCard'
+import { DataHealthCard } from './DataHealthCard'
 import { InsightsCard } from './InsightsCard'
 import { MoneyFlowCard } from './MoneyFlowCard'
 import { SpendingDonut } from './SpendingDonut'
@@ -90,6 +91,7 @@ export function Dashboard() {
       <div className="px-4 space-y-3">
         <InsightsCard month={currentMonth} />
         <NetWorthCard />
+        <DataHealthCard />
         <NetWorthTrendChart />
         <CoverageCard />
         <MoneyFlowCard month={currentMonth} />

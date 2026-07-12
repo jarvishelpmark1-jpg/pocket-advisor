@@ -156,6 +156,9 @@ export const MERCHANT_DATABASE: MerchantEntry[] = [
   { patterns: [/CASH\s*APP/i, /SQ\s*\*?CASH/i], category: 'transfer', name: 'Cash App' },
   { patterns: [/APPLE\s*CASH/i], category: 'transfer', name: 'Apple Cash' },
   { patterns: [/PAYMENT\s*(-\s*)?THANK\s*YOU/i], category: 'transfer', name: 'Card Payment' },
+  // Moves to/from the user's own brokerage aren't income or spending.
+  { patterns: [/INTERACTIVE\s*BROK/i, /\bIBKR\b/i, /FIDELITY/i, /SCHWAB/i, /VANGUARD/i, /ROBINHOOD/i, /E\*?TRADE/i, /WEALTHFRONT/i, /BETTERMENT/i], category: 'transfer', name: 'Brokerage Transfer' },
+  { patterns: [/DAILY\s*CASH/i], category: 'income_refund', name: 'Apple Daily Cash' },
 
   // ATM
   { patterns: [/ATM\s*(?:WITH|W\/D|WITHDR)/i, /CASH\s*WITHDR/i], category: 'atm_cash', name: 'ATM Withdrawal' },

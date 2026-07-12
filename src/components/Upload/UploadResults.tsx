@@ -1,14 +1,19 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { CheckCircle2, Copy, ArrowRight, ArrowLeftRight, Wallet, XCircle, FileText } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { CheckCircle2, Copy, ArrowRight, ArrowLeftRight, Wallet, XCircle, FileText, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
+import { db } from '../../lib/db'
+import { hasUnsetBalance } from '../../lib/data-health'
+import { isLiability, backfillNetWorthHistory } from '../../lib/analytics'
 import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
 import { formatCurrency } from '../../lib/formatters'
-import type { UploadResult } from '../../lib/types'
+import type { Account, UploadResult } from '../../lib/types'
 
 export interface CompletedUpload {
   filename: string
-  accountName: string
+  account: Account | null
   result: UploadResult | null
   error: string | null
 }
@@ -80,7 +85,7 @@ export function UploadResults({
                   <p className={`text-[10px] ${item.error ? 'text-expense' : 'text-text-muted'}`}>
                     {item.error
                       ? item.error
-                      : `${item.result!.total} transactions → ${item.accountName}`}
+                      : `${item.result!.total} transactions → ${item.account?.name ?? ''}`}
                   </p>
                 </div>
                 {item.error ? (
@@ -120,11 +125,15 @@ export function UploadResults({
         return (
           <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-income/10 text-income text-xs">
             <Wallet size={12} className="flex-shrink-0" />
-            {item.accountName}: {a.isLiability ? 'balance owed' : 'balance'} set to{' '}
+            {item.account?.name}: {a.isLiability ? 'balance owed' : 'balance'} set to{' '}
             {formatCurrency(a.balance)} as of {format(a.date, 'MMM d, yyyy')}
           </div>
         )
       })}
+
+      {uniqueAccounts(items).map((account) => (
+        <SetBalancePrompt key={account.id} account={account} />
+      ))}
 
       <div className="flex gap-3 pt-2">
         {needsReview > 0 ? (
@@ -137,6 +146,74 @@ export function UploadResults({
         ) : (
           <Button onClick={onDone} fullWidth>Done</Button>
         )}
+      </div>
+    </div>
+  )
+}
+
+function uniqueAccounts(items: CompletedUpload[]): Account[] {
+  const seen = new Map<number, Account>()
+  for (const item of items) {
+    if (item.account?.id != null && item.result) seen.set(item.account.id, item.account)
+  }
+  return [...seen.values()]
+}
+
+/**
+ * CSV exports carry no balance, so an account can absorb months of history yet
+ * still show the $0 it was created with. When that's the state after this
+ * upload, ask for the real number right here instead of failing silently.
+ */
+function SetBalancePrompt({ account }: { account: Account }) {
+  const live = useLiveQuery(() => db.accounts.get(account.id!), [account.id])
+  const txns = useLiveQuery(
+    () => db.transactions.where('accountId').equals(account.id!).toArray(),
+    [account.id]
+  )
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  if (!live || !txns || !hasUnsetBalance(live, txns)) return null
+  const liability = isLiability(live.type)
+
+  const save = async () => {
+    const amount = Math.abs(parseFloat(value))
+    if (isNaN(amount) || saving) return
+    setSaving(true)
+    try {
+      await db.accounts.update(account.id!, {
+        anchorBalance: amount,
+        anchorDate: new Date(),
+        updatedAt: new Date(),
+      })
+      await backfillNetWorthHistory()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/5 px-3 py-2.5">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertTriangle size={12} className="text-warning flex-shrink-0" />
+        <p className="text-text-primary text-xs">
+          This file had no balance info — what does <strong>{live.name}</strong>{' '}
+          {liability ? 'owe' : 'hold'} right now?
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={liability ? 'Current amount owed' : 'Current balance'}
+          className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-sm placeholder:text-text-muted focus:outline-none focus:border-accent/50 font-mono"
+        />
+        <Button size="sm" onClick={save} disabled={saving || !value}>
+          Save
+        </Button>
       </div>
     </div>
   )
