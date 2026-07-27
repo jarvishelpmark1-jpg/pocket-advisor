@@ -51,6 +51,22 @@ describe('suggestSpokeImports', () => {
     expect(suggestSpokeImports(txns, ['Amex Gold'])).toEqual([])
   })
 
+  it('recognizes an already-imported account despite spacing and decoration', () => {
+    // The old substring check missed this exact case and pushed users into
+    // creating a duplicate account from the "Import next" button.
+    const txns = [
+      txn({ amount: -400, description: 'CAPITAL ONE ONLINE PMT', categoryId: 'debt_payment' }),
+    ]
+    expect(suggestSpokeImports(txns, ['Capital One Venture ••1234'])).toEqual([])
+  })
+
+  it('does not let a short token wipe out unrelated suggestions', () => {
+    const txns = [
+      txn({ amount: -1800, description: 'WELLS FARGO MORTGAGE PAYMENT', categoryId: 'debt_payment' }),
+    ]
+    expect(suggestSpokeImports(txns, ['BoA'])).toHaveLength(1)
+  })
+
   it('ignores regular spending', () => {
     const txns = [txn({ amount: -60, description: 'WHOLE FOODS', categoryId: 'groceries' })]
     expect(suggestSpokeImports(txns)).toEqual([])

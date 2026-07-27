@@ -61,19 +61,29 @@ function labelFor(t: Transaction): string {
  * Pure: pass the transactions and the labels of accounts already imported
  * (names + institutions) so those are filtered out.
  */
+// "CAPITAL ONE" must recognize "Capital One Venture ••1234" as already
+// imported — compare with spacing/punctuation squashed out, either direction,
+// and require enough length that a stray short token can't match everything.
+function labelsOverlap(a: string, b: string): boolean {
+  const na = a.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const nb = b.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!na || !nb) return false
+  const [short, long] = na.length <= nb.length ? [na, nb] : [nb, na]
+  return short.length >= 4 && long.includes(short)
+}
+
 export function suggestSpokeImports(
   transactions: Transaction[],
   existingLabels: string[] = [],
   limit = 4
 ): ImportSuggestion[] {
-  const existing = existingLabels.map((l) => l.toUpperCase()).filter(Boolean)
+  const existing = existingLabels.filter(Boolean)
   const groups = new Map<string, ImportSuggestion>()
 
   for (const t of transactions) {
     if (!looksLikeSpokePayment(t)) continue
     const label = labelFor(t)
-    const upper = label.toUpperCase()
-    if (existing.some((e) => e.includes(upper) || upper.includes(e))) continue
+    if (existing.some((e) => labelsOverlap(e, label))) continue
 
     const ty = inferType(t)
     const g = groups.get(label)
