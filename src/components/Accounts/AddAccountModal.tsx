@@ -42,6 +42,9 @@ export function AddAccountModal({
   const handleSave = async () => {
     const accountName = name.trim() || `${ACCOUNT_TYPES.find(t => t.value === type)?.label ?? 'Account'}`
     const anchorBalance = parseFloat(startingBalance) || 0
+    // A typed balance (even "0") is the user's real number; an empty field is
+    // the seed — the difference decides whether the app later nags for it.
+    const balanceProvided = startingBalance.trim() !== '' && !isNaN(parseFloat(startingBalance))
     const now = new Date()
     await db.accounts.add({
       name: accountName,
@@ -49,6 +52,8 @@ export function AddAccountModal({
       institution: '',
       anchorBalance,
       anchorDate: now,
+      anchorSource: balanceProvided ? 'manual' : 'seed',
+      ...(balanceProvided ? { anchorVerifiedAt: now } : {}),
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       createdAt: now,
       updatedAt: now,

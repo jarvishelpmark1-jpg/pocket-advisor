@@ -35,6 +35,8 @@ export function EditBalanceModal({
     await db.accounts.update(account.id!, {
       anchorBalance: newBalance,
       anchorDate,
+      anchorSource: 'manual',
+      anchorVerifiedAt: new Date(),
       updatedAt: new Date(),
     })
     onClose()

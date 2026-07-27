@@ -10,7 +10,7 @@ function issueText(issue: AccountHealthIssue): { headline: string; detail: strin
     case 'no_balance':
       return {
         headline: `${name}: balance never set`,
-        detail: 'Its imports had no balance info, so it shows $0. Set the current balance in Settings, or upload a PDF statement (those carry the balance).',
+        detail: "Its number is just imported activity stacked on $0 — nobody's told the app the real balance. Set it in Settings, or upload a PDF statement (those carry it).",
         to: '/settings',
       }
     case 'stale':

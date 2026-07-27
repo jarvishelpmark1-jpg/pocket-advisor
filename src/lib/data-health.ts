@@ -17,13 +17,17 @@ export interface AccountHealthIssue {
 }
 
 /**
- * An account still on its creation seed (never anchored by a statement balance
- * or a manual edit) whose imported activity all predates that seed shows a
- * flat $0 forever — CSV imports carry no balance, so this is common and reads
- * like the app is broken. Flag it instead of letting the zero pass as real.
+ * An account still on its creation seed (nobody ever set the balance) shows a
+ * number that's just imported activity stacked on $0 — CSV imports carry no
+ * balance, so this is common and reads like the app is broken. Flag it instead
+ * of letting the guess pass as real. Accounts with recorded provenance are
+ * exact (anchorSource === 'seed'); older rows fall back to the heuristic:
+ * seed-looking anchor + all activity predating it (activity dated after the
+ * anchor may mean the account genuinely started from zero, so stay quiet).
  */
 export function hasUnsetBalance(account: Account, txns: { date: Date }[]): boolean {
   if (txns.length === 0) return false
+  if (account.anchorSource) return account.anchorSource === 'seed'
   const seedLike =
     account.anchorBalance === 0 &&
     Math.abs(account.anchorDate.getTime() - account.createdAt.getTime()) < DAY

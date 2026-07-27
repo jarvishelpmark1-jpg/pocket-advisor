@@ -16,6 +16,7 @@ import { Card } from '../shared/Card'
 import { Button } from '../shared/Button'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { useToast } from '../../hooks/useToast'
+import { TrustBadge } from '../shared/TrustBadge'
 import { AddAccountModal } from '../Accounts/AddAccountModal'
 import { EditBalanceModal } from '../Accounts/EditBalanceModal'
 import { AppLockSettings } from './AppLockSettings'
@@ -56,6 +57,7 @@ export function SettingsPage() {
   const balances = useLiveQuery(() => getAccountBalances()) ?? []
   const accounts = balances.map((b) => b.account)
   const balanceOf = (id?: number) => balances.find((b) => b.account.id === id)?.current ?? 0
+  const uploads = useLiveQuery(() => db.uploads.toArray()) ?? []
   const txnCount = useLiveQuery(() => db.transactions.count()) ?? 0
   const ruleCount = useLiveQuery(() => db.userRules.count()) ?? 0
 
@@ -162,7 +164,10 @@ export function SettingsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-text-primary text-sm font-medium">{account.name}</p>
-                      <p className="text-text-muted text-[10px]">{TYPE_LABELS[account.type]}</p>
+                      <p className="text-text-muted text-[10px] flex items-center gap-1.5">
+                        {TYPE_LABELS[account.type]}
+                        <TrustBadge account={account} uploads={uploads} />
+                      </p>
                     </div>
                     <span className="text-text-secondary text-sm font-mono">
                       {formatCurrency(Math.abs(balanceOf(account.id)))}

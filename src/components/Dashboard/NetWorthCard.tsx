@@ -1,10 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { ShieldCheck } from 'lucide-react'
+import { db } from '../../lib/db'
 import { getAccountBalances } from '../../lib/analytics'
+import { balanceTrust } from '../../lib/balance-trust'
 import { Card } from '../shared/Card'
 import { formatCurrency } from '../../lib/formatters'
 
 export function NetWorthCard() {
   const balances = useLiveQuery(() => getAccountBalances())
+  const uploads = useLiveQuery(() => db.uploads.toArray()) ?? []
 
   if (!balances || balances.length === 0) return null
 
@@ -21,6 +25,13 @@ export function NetWorthCard() {
 
   const netWorth = assets - liabilities
   const isPositive = netWorth >= 0
+
+  // "Is this number real?" in one line: how many balances rest on a statement,
+  // a verified check, or the user's own entry — vs. a $0 guess.
+  const anchored = balances.filter(
+    (b) => balanceTrust(b.account, uploads).level !== 'never_set'
+  ).length
+  const allAnchored = anchored === balances.length
 
   return (
     <Card className="relative overflow-hidden">
@@ -43,6 +54,12 @@ export function NetWorthCard() {
           <span className="text-text-secondary text-[11px] font-mono">{formatCurrency(liabilities, true)}</span>
         </div>
       </div>
+      <p className={`flex items-center gap-1 mt-2 text-[10px] ${allAnchored ? 'text-income' : 'text-text-muted'}`}>
+        <ShieldCheck size={10} />
+        {allAnchored
+          ? `All ${balances.length} balances anchored to real numbers`
+          : `${anchored} of ${balances.length} balances anchored to real numbers`}
+      </p>
     </Card>
   )
 }

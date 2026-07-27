@@ -44,6 +44,16 @@ describe('hasUnsetBalance', () => {
     const a = account({})
     expect(hasUnsetBalance(a, [txn(new Date(2026, 6, 20))])).toBe(false)
   })
+
+  it('flags a new-flow account still on its seed no matter when its activity is dated', () => {
+    const a = account({ anchorSource: 'seed' })
+    expect(hasUnsetBalance(a, [txn(new Date(2026, 6, 20))])).toBe(true)
+  })
+
+  it('trusts an explicitly-set balance even at zero', () => {
+    const a = account({ anchorSource: 'manual' })
+    expect(hasUnsetBalance(a, [txn(new Date(2026, 6, 20))])).toBe(false)
+  })
 })
 
 describe('assessAccounts', () => {
