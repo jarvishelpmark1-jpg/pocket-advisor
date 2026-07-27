@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { FileText, Clock, CheckCircle, Trash2, Loader2 } from 'lucide-react'
@@ -146,7 +146,21 @@ export function UploadPage() {
     setGroups((gs) => gs.filter((g) => g.key !== key))
   }
 
+  // A double-tap on "Import" must not run the import twice — two concurrent
+  // runs would race past the duplicate check and double-import everything.
+  const importingRef = useRef(false)
+
   const handleImportAll = async () => {
+    if (importingRef.current) return
+    importingRef.current = true
+    try {
+      await runImport()
+    } finally {
+      importingRef.current = false
+    }
+  }
+
+  const runImport = async () => {
     const toImport = groups.filter((g) => g.target.kind !== 'unresolved')
     const totalFiles = toImport.reduce((s, g) => s + g.entryKeys.length, 0)
     setPhase('importing')

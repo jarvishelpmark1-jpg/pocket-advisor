@@ -164,11 +164,12 @@ function GroupCard({
     )
   } else if (target.kind === 'new') {
     const { identity } = group
-    const description = identity.institution
-      ? `a ${identity.institution}${identity.accountType ? ` ${identityTypeLabel(identity.accountType)}` : ' account'}`
+    const noun = identity.institution
+      ? `${identity.institution}${identity.accountType ? ` ${identityTypeLabel(identity.accountType)}` : ' account'}`
       : identity.accountType
-        ? `a ${identityTypeLabel(identity.accountType)}`
-        : 'an account'
+        ? identityTypeLabel(identity.accountType)
+        : 'account'
+    const description = `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
     headline = (
       <div className="flex items-start gap-2.5">
         <Sparkles size={16} className="text-accent flex-shrink-0 mt-0.5" />
