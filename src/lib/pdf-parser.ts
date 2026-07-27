@@ -157,11 +157,12 @@ function isNoiseLine(text: string): boolean {
   return noisePatterns.some(p => p.test(lower))
 }
 
-export async function parsePDF(data: ArrayBuffer): Promise<ParseResult> {
+export async function parsePDF(data: ArrayBuffer): Promise<ParseResult & { textLines: string[] }> {
   const pages = await extractTextFromPDF(data)
   const allLines = pages.flat()
+  const textLines = allLines.map((l) => l.text)
 
-  if (allLines.length === 0) return { transactions: [], statement: null }
+  if (allLines.length === 0) return { transactions: [], statement: null, textLines }
 
   const year = detectStatementYear(allLines)
   // Detect the closing balance before the strategies run — they (and isNoiseLine)
@@ -174,9 +175,10 @@ export async function parsePDF(data: ArrayBuffer): Promise<ParseResult> {
     parseByAmountAtEnd,
   ]
 
-  const finish = (results: ParsedTransaction[]): ParseResult => ({
+  const finish = (results: ParsedTransaction[]): ParseResult & { textLines: string[] } => ({
     transactions: fixFutureDates(results, statement?.endDate ?? null),
     statement,
+    textLines,
   })
 
   for (const strategy of strategies) {
@@ -189,7 +191,7 @@ export async function parsePDF(data: ArrayBuffer): Promise<ParseResult> {
     if (results.length > 0) return finish(results)
   }
 
-  return { transactions: [], statement }
+  return { transactions: [], statement, textLines }
 }
 
 function parseByColumnLayout(lines: TextLine[], fallbackYear?: number): ParsedTransaction[] {

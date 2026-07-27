@@ -4,6 +4,13 @@ import { parsePDF } from './pdf-parser'
 import { classifyTransaction } from './classifier'
 import { reconcileTransfers } from './reconcile'
 import { isLiability, backfillNetWorthHistory } from './analytics'
+import {
+  identifyFilename,
+  identifyOFX,
+  identifyStatementText,
+  mergeIdentities,
+  type StatementIdentity,
+} from './statement-identify'
 import type { Transaction, UploadResult, ParsedTransaction, StatementMetadata } from './types'
 
 const AUTO_REVIEW_THRESHOLD = 0.7
@@ -28,18 +35,34 @@ function looksLikeSameTransaction(a: string, b: string): boolean {
   return shared / Math.min(ta.size, tb.size) >= 0.5
 }
 
-export async function processUpload(
-  file: File,
-  accountId: number,
-  onProgress?: (pct: number) => void
-): Promise<UploadResult> {
+/** A statement file after phase-1 parsing: everything read, nothing written. */
+export interface ParsedStatementFile {
+  filename: string
+  kind: 'pdf' | 'csv' | 'ofx'
+  transactions: ParsedTransaction[]
+  statement: StatementMetadata | null
+  /** who/what this statement looks like (institution, type, last four) */
+  identity: StatementIdentity
+  periodStart: Date | null
+  periodEnd: Date | null
+}
+
+/**
+ * Phase 1 of an import: read, parse, and identify the file WITHOUT touching
+ * the database. The upload flow shows this result to the user for confirmation
+ * (which account, right type) before importStatement writes anything — so a
+ * failed or misread file can never leave debris behind.
+ */
+export async function parseStatementFile(file: File): Promise<ParsedStatementFile> {
   const fileType = detectFileType(file.name)
 
   let parsed: ParsedTransaction[]
   let statement: StatementMetadata | null = null
+  let identity = identifyFilename(file.name)
+  let kind: ParsedStatementFile['kind']
 
   if (fileType === 'pdf') {
-    onProgress?.(5)
+    kind = 'pdf'
     const buffer = await file.arrayBuffer()
     let r: Awaited<ReturnType<typeof parsePDF>>
     try {
@@ -52,17 +75,21 @@ export async function processUpload(
     }
     parsed = r.transactions
     statement = r.statement
+    identity = mergeIdentities(identifyStatementText(r.textLines), identity)
   } else {
     const content = await file.text()
     const confirmedType = detectFileType(file.name, content)
     if (confirmedType === 'csv') {
+      kind = 'csv'
       const r = parseCSV(content)
       parsed = r.transactions
       statement = r.statement
     } else if (confirmedType === 'ofx') {
+      kind = 'ofx'
       const r = parseOFX(content)
       parsed = r.transactions
       statement = r.statement
+      identity = mergeIdentities(identifyOFX(content), identity)
     } else {
       throw new Error('Unsupported file format. Please upload a PDF, CSV, or OFX/QFX file.')
     }
@@ -75,6 +102,32 @@ export async function processUpload(
         : 'No transactions found in this file. Please check the format.'
     )
   }
+
+  const dates = parsed.map((t) => t.date.getTime()).filter((d) => !isNaN(d))
+  return {
+    filename: file.name,
+    kind,
+    transactions: parsed,
+    statement,
+    identity,
+    periodStart: dates.length > 0 ? new Date(Math.min(...dates)) : null,
+    periodEnd: dates.length > 0 ? new Date(Math.max(...dates)) : null,
+  }
+}
+
+/**
+ * Phase 2: write a parsed statement into an account — dedupe, classify,
+ * reconcile transfers, and re-anchor the balance. Also stamps the account with
+ * the statement's identity (institution, last four) when those are blank, so
+ * the next upload of this account auto-matches.
+ */
+export async function importStatement(
+  parsedFile: ParsedStatementFile,
+  accountId: number,
+  onProgress?: (pct: number) => void
+): Promise<UploadResult> {
+  let parsed = parsedFile.transactions
+  const statement = parsedFile.statement
 
   // Capture state before we add rows: whether this is the account's first import
   // decides whether a statement balance may adopt over the default/seed anchor.
@@ -94,7 +147,7 @@ export async function processUpload(
 
   const upload = await db.uploads.add({
     accountId,
-    filename: file.name,
+    filename: parsedFile.filename,
     transactionCount: 0,
     autoClassified: 0,
     needsReview: 0,
@@ -200,9 +253,10 @@ export async function processUpload(
 
   onProgress?.(98)
 
-  const dates = transactions.map(t => t.date.getTime()).filter(d => !isNaN(d))
-  const periodStart = dates.length > 0 ? new Date(Math.min(...dates)) : null
-  const periodEnd = dates.length > 0 ? new Date(Math.max(...dates)) : null
+  // The file's own period (pre-dedupe): even a fully-duplicate re-upload knows
+  // what stretch of time it covered.
+  const periodStart = parsedFile.periodStart
+  const periodEnd = parsedFile.periodEnd
 
   // Re-anchor the account to the statement's ending balance so the derived
   // balance is actually live (not stuck at the seed value). The statement's
@@ -210,6 +264,7 @@ export async function processUpload(
   // that balance and won't double-count (deriveAccountBalance only adds rows
   // dated strictly after the anchor).
   let anchorUpdated: UploadResult['anchorUpdated'] = null
+  let anchorSkipped: UploadResult['anchorSkipped'] = null
   if (account && statement) {
     const anchorDate = statement.endDate ?? periodEnd
     // Adopt on the account's first import, and afterwards only adopt a newer
@@ -223,14 +278,36 @@ export async function processUpload(
     const adopt =
       anchorDate !== null &&
       (priorTxnCount === 0 || seedAnchor || anchorDate.getTime() > account.anchorDate.getTime())
+    const liability = isLiability(account.type)
+    // anchorBalance is stored in natural terms: cash for assets, amount owed
+    // (positive) for liabilities. OFX reports owed as a negative balance, PDFs
+    // print it positive — abs() normalizes both.
+    const normalizedBalance = liability ? Math.abs(statement.endingBalance) : statement.endingBalance
     if (adopt && anchorDate) {
-      const liability = isLiability(account.type)
-      // anchorBalance is stored in natural terms: cash for assets, amount owed
-      // (positive) for liabilities. OFX reports owed as a negative balance, PDFs
-      // print it positive — abs() normalizes both.
-      const anchorBalance = liability ? Math.abs(statement.endingBalance) : statement.endingBalance
-      await db.accounts.update(accountId, { anchorBalance, anchorDate, updatedAt: new Date() })
-      anchorUpdated = { balance: anchorBalance, date: anchorDate, isLiability: liability }
+      await db.accounts.update(accountId, {
+        anchorBalance: normalizedBalance,
+        anchorDate,
+        anchorSource: 'statement',
+        updatedAt: new Date(),
+      })
+      anchorUpdated = { balance: normalizedBalance, date: anchorDate, isLiability: liability }
+    } else {
+      anchorSkipped = { balance: normalizedBalance, date: anchorDate }
+    }
+  }
+
+  // Learn the statement's fingerprint: fill in institution / last-four the
+  // account doesn't have yet, so the next upload of this account auto-matches
+  // instead of asking (or worse, creating a duplicate). Fill-blanks only —
+  // never overwrite what the user typed.
+  if (account) {
+    const { identity } = parsedFile
+    const stamp: Partial<Pick<typeof account, 'institution' | 'lastFour' | 'updatedAt'>> = {}
+    if (!account.institution && identity.institution) stamp.institution = identity.institution
+    if (!account.lastFour && identity.lastFour) stamp.lastFour = identity.lastFour
+    if (Object.keys(stamp).length > 0) {
+      stamp.updatedAt = new Date()
+      await db.accounts.update(accountId, stamp)
     }
   }
 
@@ -259,5 +336,19 @@ export async function processUpload(
     transfersMatched,
     transactions,
     anchorUpdated,
+    anchorSkipped,
+    periodStart,
+    periodEnd,
   }
+}
+
+/** Parse + import in one step (kept for callers that don't need a confirm gate). */
+export async function processUpload(
+  file: File,
+  accountId: number,
+  onProgress?: (pct: number) => void
+): Promise<UploadResult> {
+  onProgress?.(5)
+  const parsed = await parseStatementFile(file)
+  return importStatement(parsed, accountId, onProgress)
 }

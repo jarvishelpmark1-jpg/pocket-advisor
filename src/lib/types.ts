@@ -15,6 +15,14 @@ export interface Account {
    */
   anchorBalance: number
   anchorDate: Date
+  /**
+   * Where the current anchor came from: adopted from a statement, set by hand,
+   * or the $0 creation seed (= balance never really set). Missing on rows
+   * created before this field existed — balance-trust falls back to heuristics.
+   */
+  anchorSource?: 'seed' | 'statement' | 'manual'
+  /** set when the user confirmed the anchored balance matches their bank */
+  anchorVerifiedAt?: Date
   color: string
   createdAt: Date
   updatedAt: Date
@@ -153,4 +161,13 @@ export interface UploadResult {
   transactions: Transaction[]
   /** set when the statement's ending balance re-anchored the account */
   anchorUpdated: { balance: number; date: Date; isLiability: boolean } | null
+  /**
+   * Set when the file carried a balance that was NOT adopted (an equal-or-newer
+   * anchor already existed). Balance is normalized to anchor terms; surfaced so
+   * the user is never left wondering why the number didn't move.
+   */
+  anchorSkipped: { balance: number; date: Date | null } | null
+  /** the statement period actually covered by this file's rows */
+  periodStart: Date | null
+  periodEnd: Date | null
 }
