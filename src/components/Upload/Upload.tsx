@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { FileText, Clock, CheckCircle, Trash2, Plus, Sparkles } from 'lucide-react'
+import { FileText, Clock, CheckCircle, Trash2, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { motion } from 'framer-motion'
 import { db, clearAllData } from '../../lib/db'
-import { suggestAccountForFilename } from '../../lib/account-match'
+import { parseStatementFile, importStatement } from '../../lib/upload-processor'
+import { planImports, type ImportGroup, type ImportTarget } from '../../lib/upload-plan'
+import { suggestedAccountName, type StatementIdentity } from '../../lib/statement-identify'
 import { DropZone } from './DropZone'
-import { ProcessingView } from './ProcessingView'
+import { ConfirmStep, type ConfirmEntry } from './ConfirmStep'
 import { UploadResults, type CompletedUpload } from './UploadResults'
 import { NextImportsCard } from './NextImportsCard'
 import { Card } from '../shared/Card'
-import { Button } from '../shared/Button'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
+import { ProgressBar } from '../shared/ProgressBar'
 import { useToast } from '../../hooks/useToast'
-import type { Account, AccountType, UploadResult } from '../../lib/types'
+import type { Account, AccountType } from '../../lib/types'
 
 const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#06B6D4']
 
@@ -26,31 +29,32 @@ const PRESET_TYPE_LABELS: Partial<Record<AccountType, string>> = {
   savings: 'savings',
 }
 
-const NEW_ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit', label: 'Credit card' },
-  { value: 'loan', label: 'Loan' },
-]
+// drop → reading (parse every file, no DB writes) → confirm (one plain-English
+// question per detected account) → importing → summary. Accounts are only
+// created after their statement has parsed successfully AND the user confirmed
+// — a failed or misread file can never leave a ghost account behind.
+type Phase = 'idle' | 'reading' | 'confirm' | 'importing' | 'summary'
 
-type Phase = 'idle' | 'assign' | 'processing' | 'summary'
-
-interface QueueItem {
-  file: File
-  account: Account | null
-  result: UploadResult | null
-  error: string | null
+interface StepProgress {
+  current: number
+  total: number
+  filename: string
+  /** within-file percent (import phase only) */
+  pct: number
 }
 
 export function UploadPage() {
   const [phase, setPhase] = useState<Phase>('idle')
-  const [queue, setQueue] = useState<QueueItem[]>([])
-  const [current, setCurrent] = useState(0)
+  const [entries, setEntries] = useState<Map<number, ConfirmEntry>>(new Map())
+  const [failed, setFailed] = useState<{ filename: string; error: string }[]>([])
+  const [groups, setGroups] = useState<ImportGroup[]>([])
+  const [progress, setProgress] = useState<StepProgress | null>(null)
+  const [completed, setCompleted] = useState<CompletedUpload[]>([])
   const [confirmClear, setConfirmClear] = useState(false)
   const { toast } = useToast()
 
   // Manual assets (house, vehicles, …) have no statements, so they're never
-  // import targets — keep them out of the picker.
+  // import targets — keep them out of matching and the picker.
   const accounts = (useLiveQuery(() => db.accounts.toArray()) ?? []).filter((a) => a.type !== 'manual_asset')
   const allUploads = useLiveQuery(() => db.uploads.toArray()) ?? []
   const recentUploads = useLiveQuery(() => db.uploads.orderBy('uploadedAt').reverse().limit(10).toArray()) ?? []
@@ -58,9 +62,10 @@ export function UploadPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // A guided "Import next" link lands here pre-targeting a NEW account (the
-  // coverage engine only ever suggests accounts that don't exist yet), with an
-  // inferred type so a card/loan is created as a debt.
+  // A guided "Import next" link lands here pre-targeting an account by name.
+  // It only prefills what the dropped files can't say about themselves — the
+  // files are still parsed and matched first, so tapping a suggestion for an
+  // account that already exists routes to it instead of duplicating it.
   const presetName = searchParams.get('new')?.trim() || ''
   const presetTypeRaw = searchParams.get('type')?.trim() as AccountType | null
   const presetType: AccountType =
@@ -69,18 +74,26 @@ export function UploadPage() {
     if (presetName) setSearchParams({}, { replace: true })
   }
 
-  const createAccount = async (name: string, type: AccountType): Promise<Account> => {
+  const createAccount = async (
+    name: string,
+    type: AccountType,
+    identity: StatementIdentity
+  ): Promise<Account> => {
     const count = await db.accounts.count()
-    const finalName = name.trim() || (count === 0 ? 'My Account' : `Account ${count + 1}`)
-    const color = COLORS[count % COLORS.length]
+    const finalName =
+      name.trim() ||
+      suggestedAccountName(identity) ||
+      (count === 0 ? 'My Account' : `Account ${count + 1}`)
     const now = new Date()
     const base = {
       name: finalName,
       type,
-      institution: '',
+      institution: identity.institution ?? '',
+      lastFour: identity.lastFour ?? undefined,
       anchorBalance: 0,
       anchorDate: now,
-      color,
+      anchorSource: 'seed' as const,
+      color: COLORS[count % COLORS.length],
       createdAt: now,
       updatedAt: now,
     }
@@ -88,54 +101,115 @@ export function UploadPage() {
     return { id: id as number, ...base }
   }
 
-  // Move the queue pointer to `index`, entering whichever phase that item needs.
-  const startItem = (q: QueueItem[], index: number) => {
-    setQueue(q)
-    if (index >= q.length) {
-      setPhase(q.length > 0 ? 'summary' : 'idle')
+  const handleFilesDrop = async (files: File[]) => {
+    setPhase('reading')
+    const parsedEntries = new Map<number, ConfirmEntry>()
+    const failures: { filename: string; error: string }[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      setProgress({ current: i + 1, total: files.length, filename: files[i].name, pct: 0 })
+      try {
+        const parsed = await parseStatementFile(files[i])
+        parsedEntries.set(i, { file: files[i], parsed })
+      } catch (err) {
+        failures.push({
+          filename: files[i].name,
+          error: err instanceof Error ? err.message : 'Could not read this file',
+        })
+      }
+    }
+
+    setEntries(parsedEntries)
+    setFailed(failures)
+    setProgress(null)
+
+    const planEntries = [...parsedEntries.entries()].map(([key, e]) => ({ key, parsed: e.parsed }))
+    const preset = presetName ? { name: presetName, type: presetType } : null
+    clearPreset()
+
+    if (planEntries.length === 0) {
+      // Nothing parseable — go straight to the receipt so the errors are explained.
+      setCompleted(failures.map((f) => ({ filename: f.filename, account: null, result: null, error: f.error })))
+      setPhase('summary')
       return
     }
-    setCurrent(index)
-    setPhase(q[index].account ? 'processing' : 'assign')
+
+    setGroups(planImports(planEntries, accounts, allUploads, preset))
+    setPhase('confirm')
   }
 
-  const handleFilesDrop = async (files: File[]) => {
-    // A preset deep-link means "these statements belong to this new account" —
-    // create it once and assign the whole batch to it.
-    let preset: Account | null = null
-    if (presetName) {
-      preset = await createAccount(presetName, presetType)
-      clearPreset()
+  const handleResolve = (key: string, target: ImportTarget) => {
+    setGroups((gs) => gs.map((g) => (g.key === key ? { ...g, target } : g)))
+  }
+
+  const handleSkipGroup = (key: string) => {
+    setGroups((gs) => gs.filter((g) => g.key !== key))
+  }
+
+  const handleImportAll = async () => {
+    const toImport = groups.filter((g) => g.target.kind !== 'unresolved')
+    const totalFiles = toImport.reduce((s, g) => s + g.entryKeys.length, 0)
+    setPhase('importing')
+
+    const results: CompletedUpload[] = []
+    let done = 0
+
+    for (const group of toImport) {
+      let account: Account | null = null
+      let accountError: string | null = null
+      try {
+        if (group.target.kind === 'existing') {
+          account = (await db.accounts.get(group.target.accountId)) ?? null
+          if (!account) accountError = 'That account no longer exists.'
+        } else if (group.target.kind === 'new') {
+          account = await createAccount(group.target.name, group.target.type, group.identity)
+        }
+      } catch (err) {
+        accountError = err instanceof Error ? err.message : 'Could not create the account'
+      }
+
+      for (const key of group.entryKeys) {
+        const entry = entries.get(key)
+        if (!entry) continue
+        if (!account) {
+          results.push({ filename: entry.parsed.filename, account: null, result: null, error: accountError ?? 'No account selected' })
+          done++
+          continue
+        }
+        setProgress({ current: done + 1, total: totalFiles, filename: entry.parsed.filename, pct: 0 })
+        try {
+          const result = await importStatement(entry.parsed, account.id!, (pct) =>
+            setProgress({ current: done + 1, total: totalFiles, filename: entry.parsed.filename, pct })
+          )
+          results.push({ filename: entry.parsed.filename, account, result, error: null })
+        } catch (err) {
+          results.push({
+            filename: entry.parsed.filename,
+            account,
+            result: null,
+            error: err instanceof Error ? err.message : 'Import failed',
+          })
+        }
+        done++
+      }
     }
-    const q = files.map((file) => ({ file, account: preset, result: null, error: null }))
-    startItem(q, 0)
-  }
 
-  const handleAssign = (account: Account) => {
-    const q = queue.map((it, i) => (i === current ? { ...it, account } : it))
-    setQueue(q)
-    setPhase('processing')
-  }
+    for (const f of failed) {
+      results.push({ filename: f.filename, account: null, result: null, error: f.error })
+    }
 
-  const handleSkipFile = () => {
-    const q = queue.filter((_, i) => i !== current)
-    startItem(q, current)
-  }
-
-  const handleComplete = (result: UploadResult) => {
-    const q = queue.map((it, i) => (i === current ? { ...it, result } : it))
-    startItem(q, current + 1)
-  }
-
-  const handleError = (message: string) => {
-    const q = queue.map((it, i) => (i === current ? { ...it, error: message } : it))
-    startItem(q, current + 1)
+    setCompleted(results)
+    setProgress(null)
+    setPhase('summary')
   }
 
   const handleReset = () => {
     setPhase('idle')
-    setQueue([])
-    setCurrent(0)
+    setEntries(new Map())
+    setFailed([])
+    setGroups([])
+    setProgress(null)
+    setCompleted([])
     clearPreset()
   }
 
@@ -146,14 +220,13 @@ export function UploadPage() {
     toast('All data cleared')
   }
 
-  const currentItem = queue[current]
-  const queueLabel = queue.length > 1 ? `File ${current + 1} of ${queue.length}` : undefined
-  const completedItems: CompletedUpload[] = queue.map((it) => ({
-    filename: it.file.name,
-    account: it.account,
-    result: it.result,
-    error: it.error,
-  }))
+  const handleRejectedFiles = (names: string[]) => {
+    const label = names.length === 1 ? `"${names[0]}"` : `${names.length} of those files`
+    toast(
+      `Can't read ${label} — statements need to be PDF, CSV, or OFX/QFX files. Your bank's website has them under Statements or Documents.`,
+      'error'
+    )
+  }
 
   return (
     <div className="min-h-full pb-4">
@@ -161,7 +234,9 @@ export function UploadPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-text-primary text-lg font-bold">Upload Statements</h1>
-            <p className="text-text-muted text-xs mt-0.5">PDF, CSV, OFX, or QFX — as many as you like</p>
+            <p className="text-text-muted text-xs mt-0.5">
+              Drop any statement — the app reads it and tells you what it found
+            </p>
           </div>
           {txnCount > 0 && phase === 'idle' && (
             <button
@@ -180,7 +255,7 @@ export function UploadPage() {
         {phase === 'idle' && presetName && (
           <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
             <p className="text-text-secondary text-[11px]">
-              New account:{' '}
+              Adding:{' '}
               <span className="text-accent font-semibold">{presetName}</span>
               {presetType !== 'checking' && (
                 <span className="text-text-muted"> · {PRESET_TYPE_LABELS[presetType]}</span>
@@ -190,35 +265,55 @@ export function UploadPage() {
           </div>
         )}
 
-        {phase === 'idle' && <DropZone onFiles={handleFilesDrop} />}
+        {phase === 'idle' && <DropZone onFiles={handleFilesDrop} onRejected={handleRejectedFiles} />}
 
         {phase === 'idle' && <NextImportsCard />}
 
-        {phase === 'assign' && currentItem && (
-          <AssignAccountCard
-            file={currentItem.file}
-            queueLabel={queueLabel}
-            accounts={accounts}
-            suggestedId={suggestAccountForFilename(currentItem.file.name, allUploads)}
-            onSelect={handleAssign}
-            onCreate={async (name, type) => handleAssign(await createAccount(name, type))}
-            onSkip={handleSkipFile}
-          />
+        {(phase === 'reading' || phase === 'importing') && progress && (
+          <Card className="text-center">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+              className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4"
+            >
+              <Loader2 size={24} className="text-accent" />
+            </motion.div>
+            <p className="text-text-primary text-sm font-medium mb-1">
+              {phase === 'reading' ? 'Reading your statements' : 'Importing'}
+            </p>
+            <p className="text-text-muted text-xs mb-4">
+              {phase === 'reading'
+                ? 'Nothing is saved yet — you confirm first'
+                : 'Sorting and categorizing transactions'}
+            </p>
+            <ProgressBar
+              value={((progress.current - 1 + progress.pct / 100) / progress.total) * 100}
+              color="#6366F1"
+              height={4}
+            />
+            <p className="text-text-muted text-[10px] font-mono mt-2">
+              {progress.total > 1 ? `File ${progress.current} of ${progress.total} · ` : ''}
+              {progress.filename}
+            </p>
+          </Card>
         )}
 
-        {phase === 'processing' && currentItem?.account && (
-          <ProcessingView
-            file={currentItem.file}
-            accountId={currentItem.account.id!}
-            queueLabel={queueLabel}
-            onComplete={handleComplete}
-            onError={handleError}
+        {phase === 'confirm' && (
+          <ConfirmStep
+            groups={groups}
+            entriesByKey={entries}
+            accounts={accounts}
+            failed={failed}
+            onResolve={handleResolve}
+            onSkip={handleSkipGroup}
+            onImport={handleImportAll}
+            onCancel={handleReset}
           />
         )}
 
         {phase === 'summary' && (
           <UploadResults
-            items={completedItems}
+            items={completed}
             onReview={() => navigate('/review')}
             onDone={handleReset}
           />
@@ -237,7 +332,10 @@ export function UploadPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-text-primary text-xs truncate">{u.filename}</p>
                     <p className="text-text-muted text-[10px]">
-                      {u.transactionCount} transactions · {format(u.uploadedAt, 'MMM d, yyyy')}
+                      {u.transactionCount} transactions
+                      {u.periodStart && u.periodEnd
+                        ? ` · covers ${format(u.periodStart, 'MMM d')} – ${format(u.periodEnd, 'MMM d, yyyy')}`
+                        : ` · ${format(u.uploadedAt, 'MMM d, yyyy')}`}
                     </p>
                   </div>
                   <CheckCircle size={14} className="text-income flex-shrink-0" />
@@ -258,127 +356,5 @@ export function UploadPage() {
         onCancel={() => setConfirmClear(false)}
       />
     </div>
-  )
-}
-
-function AssignAccountCard({
-  file,
-  queueLabel,
-  accounts,
-  suggestedId,
-  onSelect,
-  onCreate,
-  onSkip,
-}: {
-  file: File
-  queueLabel?: string
-  accounts: Account[]
-  suggestedId: number | null
-  onSelect: (account: Account) => void
-  onCreate: (name: string, type: AccountType) => Promise<void>
-  onSkip: () => void
-}) {
-  const [showForm, setShowForm] = useState(accounts.length === 0)
-  const [name, setName] = useState('')
-  const [type, setType] = useState<AccountType>('checking')
-  const [creating, setCreating] = useState(false)
-
-  // Suggested account first, so the common "12 months of the same account" dump
-  // is one tap per file.
-  const sorted = [...accounts].sort((a, b) => (a.id === suggestedId ? -1 : b.id === suggestedId ? 1 : 0))
-
-  const handleCreate = async () => {
-    if (creating) return
-    setCreating(true)
-    try {
-      await onCreate(name, type)
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  return (
-    <Card>
-      <p className="text-text-primary text-sm font-medium">Which account is this statement for?</p>
-      <p className="text-text-muted text-[10px] font-mono mt-1 mb-3 truncate">
-        {queueLabel ? `${queueLabel} · ` : ''}{file.name}
-      </p>
-
-      {accounts.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {sorted.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => onSelect(a)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:border-accent/40 hover:bg-bg-elevated transition-colors text-left"
-            >
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold" style={{ backgroundColor: a.color + '20', color: a.color }}>
-                {a.name.slice(0, 2).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-text-primary text-sm truncate">{a.name}</p>
-                <p className="text-text-muted text-[10px]">{a.institution || a.type}</p>
-              </div>
-              {a.id === suggestedId && (
-                <span className="flex items-center gap-1 text-accent text-[10px] font-medium flex-shrink-0">
-                  <Sparkles size={10} />
-                  Suggested
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!showForm && accounts.length > 0 && (
-        <button
-          onClick={() => setShowForm(true)}
-          className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-border hover:border-accent/40 transition-colors text-left text-text-secondary text-sm"
-        >
-          <div className="w-8 h-8 rounded-lg bg-bg-elevated flex items-center justify-center">
-            <Plus size={14} />
-          </div>
-          New account
-        </button>
-      )}
-
-      {showForm && (
-        <div className="space-y-3 p-3 rounded-xl bg-bg-elevated">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Account name (e.g. Chase Checking)"
-            className="w-full px-3 py-2.5 rounded-lg bg-bg-card border border-border text-text-primary text-sm placeholder:text-text-muted focus:outline-none focus:border-accent/50"
-            autoFocus={accounts.length > 0}
-          />
-          <div className="flex gap-1.5 flex-wrap">
-            {NEW_ACCOUNT_TYPES.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => setType(t.value)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-                  type === t.value
-                    ? 'bg-accent text-white'
-                    : 'bg-bg-card text-text-secondary border border-border'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <Button onClick={handleCreate} disabled={creating} fullWidth>
-            {creating ? 'Creating…' : 'Create & import here'}
-          </Button>
-        </div>
-      )}
-
-      <button
-        onClick={onSkip}
-        className="w-full text-center text-text-muted text-xs mt-3 py-1.5 hover:text-text-secondary transition-colors"
-      >
-        Skip this file
-      </button>
-    </Card>
   )
 }

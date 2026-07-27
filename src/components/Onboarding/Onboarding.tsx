@@ -7,8 +7,8 @@ const STEPS = [
   {
     icon: Upload,
     color: '#6366F1',
-    title: 'Upload Your Statements',
-    description: 'Drop a PDF, CSV, or OFX file from your bank. We support all major formats.',
+    title: 'Just Drop Your Statements',
+    description: "Download statements from your bank and drop them in. Pocket Advisor reads each file, figures out which account it belongs to, and checks with you before saving anything.",
   },
   {
     icon: Radar,

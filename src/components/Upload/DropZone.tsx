@@ -3,13 +3,24 @@ import { useDropzone } from 'react-dropzone'
 import { motion } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 
-export function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
+export function DropZone({
+  onFiles,
+  onRejected,
+}: {
+  onFiles: (files: File[]) => void
+  /** called with the names of files that aren't an accepted statement format */
+  onRejected?: (filenames: string[]) => void
+}) {
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted.length > 0) onFiles(accepted)
   }, [onFiles])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    // A dropped photo/spreadsheet/whatever must produce feedback, not silence.
+    onDropRejected: (rejections) => {
+      if (rejections.length > 0) onRejected?.(rejections.map((r) => r.file.name))
+    },
     accept: {
       'text/csv': ['.csv'],
       'application/pdf': ['.pdf'],
