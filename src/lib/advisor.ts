@@ -348,7 +348,9 @@ export async function getBriefing(range: RangeKey): Promise<AdvisorParagraph[]> 
 
   const goals = await db.goals.toArray()
   const house = goals.find((g) => g.kind === 'house')
-  const dataIssueCount = (await assessDataHealth()).length
+  // Distinct accounts with problems — the caveat says "N accounts", so a
+  // single account with two issues must count once.
+  const dataIssueCount = new Set((await assessDataHealth()).map((i) => i.account.id)).size
 
   return buildBriefing({
     rangeLabel: RANGE_LABELS[range],
