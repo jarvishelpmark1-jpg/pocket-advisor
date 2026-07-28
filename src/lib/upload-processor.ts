@@ -284,6 +284,16 @@ export async function importStatement(
     // print it positive — abs() normalizes both.
     const normalizedBalance = liability ? Math.abs(statement.endingBalance) : statement.endingBalance
     if (adopt && anchorDate) {
+      // Remember what we're replacing so deleting this upload can restore it.
+      await db.uploads.update(upload as number, {
+        anchorBefore: {
+          balance: account.anchorBalance,
+          date: account.anchorDate,
+          source: account.anchorSource ?? null,
+          verifiedAt: account.anchorVerifiedAt ?? null,
+        },
+        anchorSet: { balance: normalizedBalance, date: anchorDate },
+      })
       await db.accounts.update(accountId, {
         anchorBalance: normalizedBalance,
         anchorDate,

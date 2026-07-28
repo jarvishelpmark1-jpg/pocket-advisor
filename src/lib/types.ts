@@ -76,6 +76,18 @@ export interface Upload {
   uploadedAt: Date
   periodStart: Date | null
   periodEnd: Date | null
+  /**
+   * When this upload re-anchored the account: the anchor it replaced (for
+   * undo) and the anchor it set (to tell whether it's still in effect).
+   * Absent on uploads that didn't touch the anchor or predate this field.
+   */
+  anchorBefore?: {
+    balance: number
+    date: Date
+    source: 'seed' | 'statement' | 'manual' | null
+    verifiedAt: Date | null
+  }
+  anchorSet?: { balance: number; date: Date }
 }
 
 export interface UserRule {
