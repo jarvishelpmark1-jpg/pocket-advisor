@@ -1,15 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { getNetWorthHistory } from '../../lib/analytics'
 import { formatCurrency, formatMonthShort } from '../../lib/formatters'
 import { Card, CardHeader } from '../shared/Card'
 
-export function NetWorthTrendChart() {
-  const [data, setData] = useState<{ month: string; netWorth: number }[]>([])
-
-  useEffect(() => {
-    getNetWorthHistory(12).then(setData)
-  }, [])
+export function NetWorthTrendChart({ months = 12 }: { months?: number }) {
+  const data = useLiveQuery(() => getNetWorthHistory(months), [months]) ?? []
 
   // A single point (or a flat line of identical values) tells you nothing — only
   // show the chart once there are at least two distinct net-worth readings.

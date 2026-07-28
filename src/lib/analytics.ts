@@ -1,6 +1,6 @@
 import { db } from './db'
 import type { Account, Transaction, RecurringTransaction, CategoryId, MonthlySnapshot } from './types'
-import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+import { format, subMonths, startOfMonth, endOfMonth, parseISO, differenceInCalendarMonths } from 'date-fns'
 
 export function isLiability(type: Account['type']): boolean {
   return type === 'credit' || type === 'loan'
@@ -336,18 +336,28 @@ export async function getNetWorthHistory(monthsBack = 12): Promise<{ month: stri
     .map((s) => ({ month: s.month, netWorth: s.netWorth }))
 }
 
+/** Months from the earliest transaction to now — how far history can reach. */
+export async function monthsOfData(): Promise<number> {
+  const earliest = await db.transactions.orderBy('date').first()
+  if (!earliest) return 12
+  return Math.max(12, differenceInCalendarMonths(new Date(), earliest.date) + 1)
+}
+
 /**
- * Write/refresh net-worth snapshots for the trailing `monthsBack` months. Past
- * months are reconstructed as-of their month-end from anchors + transactions, so
- * the history chart is meaningful immediately rather than only going forward.
+ * Write/refresh net-worth snapshots for the trailing months. Past months are
+ * reconstructed as-of their month-end from anchors + transactions, so the
+ * history chart is meaningful immediately rather than only going forward.
+ * With no explicit `monthsBack` it reaches back to the earliest transaction
+ * (minimum a year, capped at 5 years) so long ranges have real history.
  * Idempotent (upsert by month); safe to call on every app start. No-op with no
  * accounts.
  */
-export async function backfillNetWorthHistory(monthsBack = 12): Promise<void> {
+export async function backfillNetWorthHistory(monthsBack?: number): Promise<void> {
   const accountCount = await db.accounts.count()
   if (accountCount === 0) return
+  const months = monthsBack ?? Math.min(60, await monthsOfData())
   const now = new Date()
-  for (let i = monthsBack - 1; i >= 0; i--) {
+  for (let i = months - 1; i >= 0; i--) {
     await saveMonthlySnapshot(getMonthKey(subMonths(now, i)))
   }
 }

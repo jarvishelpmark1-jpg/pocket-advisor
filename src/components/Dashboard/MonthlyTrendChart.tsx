@@ -1,22 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { getMonthlyTrend } from '../../lib/analytics'
 import { formatCurrency, formatMonthShort } from '../../lib/formatters'
 import { Card, CardHeader } from '../shared/Card'
 
-export function MonthlyTrendChart() {
-  const [data, setData] = useState<{ month: string; income: number; expenses: number; net: number }[]>([])
-
-  useEffect(() => {
-    getMonthlyTrend(6).then(setData)
-  }, [])
+export function MonthlyTrendChart({ months = 6 }: { months?: number }) {
+  const data = useLiveQuery(() => getMonthlyTrend(months), [months]) ?? []
 
   const hasData = data.some(d => d.income > 0 || d.expenses > 0)
   if (!hasData) return null
 
   return (
     <Card>
-      <CardHeader title="6-Month Trend" />
+      <CardHeader title="Income vs Spending" />
       <div className="h-40 -mx-2">
         <ResponsiveContainer>
           <AreaChart data={data}>

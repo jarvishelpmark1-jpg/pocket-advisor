@@ -4,13 +4,14 @@ import { subMonths, addMonths, parseISO } from 'date-fns'
 import { ChevronLeft, ChevronRight, Settings, Upload } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../lib/db'
-import { getMonthKey } from '../../lib/analytics'
+import { getMonthKey, monthsOfData } from '../../lib/analytics'
 import { formatMonthLong } from '../../lib/formatters'
+import type { RangeKey } from '../../lib/advisor'
+import { AdvisorCard } from './AdvisorCard'
 import { NetWorthCard } from './NetWorthCard'
 import { NetWorthTrendChart } from './NetWorthTrendChart'
 import { CoverageCard } from './CoverageCard'
 import { DataHealthCard } from './DataHealthCard'
-import { InsightsCard } from './InsightsCard'
 import { MoneyFlowCard } from './MoneyFlowCard'
 import { SpendingDonut } from './SpendingDonut'
 import { SavingsRateCard } from './SavingsRateCard'
@@ -21,11 +22,24 @@ import { QuickActions } from './QuickActions'
 import { GoalsCard } from '../Goals/GoalsCard'
 import { EmptyState } from '../shared/EmptyState'
 
+const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+  { key: '3m', label: '3M' },
+  { key: '6m', label: '6M' },
+  { key: '12m', label: '1Y' },
+  { key: 'all', label: 'All' },
+]
+
 export function Dashboard() {
   const [currentMonth, setCurrentMonth] = useState(getMonthKey(new Date()))
+  // The big-picture lens: how far back the briefing and trend charts read.
+  // Defaults to a year — the "how am I actually doing" view.
+  const [range, setRange] = useState<RangeKey>('12m')
   const navigate = useNavigate()
 
   const txnCount = useLiveQuery(() => db.transactions.count())
+  const dataMonths = useLiveQuery(() => monthsOfData()) ?? 12
+  const rangeMonths =
+    range === 'all' ? Math.min(60, dataMonths) : { '3m': 3, '6m': 6, '12m': 12 }[range]
 
   const prevMonth = () => {
     setCurrentMonth(getMonthKey(subMonths(parseISO(currentMonth + '-01'), 1)))
@@ -73,7 +87,42 @@ export function Dashboard() {
     <div className="min-h-full pb-4">
       <Header />
 
-      <div className="px-4 mb-4 flex items-center justify-between">
+      {/* ---- The big picture: pick a lens, get the briefing ---- */}
+      <div className="px-4 space-y-3">
+        <DataHealthCard />
+
+        <div
+          className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-bg-elevated"
+          role="radiogroup"
+          aria-label="Time range"
+        >
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              role="radio"
+              aria-checked={range === opt.key}
+              onClick={() => setRange(opt.key)}
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                range === opt.key
+                  ? 'bg-bg-card text-text-primary shadow-sm'
+                  : 'text-text-muted'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <AdvisorCard range={range} />
+        <NetWorthCard />
+        <NetWorthTrendChart months={rangeMonths} />
+        <MonthlyTrendChart months={rangeMonths} />
+        <CoverageCard />
+        <GoalsCard />
+      </div>
+
+      {/* ---- The microscope: one month at a time ---- */}
+      <div className="px-4 mt-6 mb-3 flex items-center justify-between">
         <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-bg-elevated text-text-muted" aria-label="Previous month">
           <ChevronLeft size={18} />
         </button>
@@ -89,20 +138,13 @@ export function Dashboard() {
       </div>
 
       <div className="px-4 space-y-3">
-        <InsightsCard month={currentMonth} />
-        <NetWorthCard />
-        <DataHealthCard />
-        <NetWorthTrendChart />
-        <CoverageCard />
         <MoneyFlowCard month={currentMonth} />
-        <GoalsCard />
         <div className="grid grid-cols-2 gap-3">
           <SavingsRateCard month={currentMonth} />
           <QuickActions />
         </div>
         <BudgetCard month={currentMonth} />
         <SpendingDonut month={currentMonth} />
-        <MonthlyTrendChart />
         <RecentTransactions month={currentMonth} />
       </div>
     </div>
