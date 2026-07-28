@@ -5,6 +5,7 @@ import { FileText, Clock, CheckCircle, Trash2, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { motion } from 'framer-motion'
 import { db, clearAllData } from '../../lib/db'
+import { deleteUpload } from '../../lib/upload-delete'
 import { parseStatementFile, importStatement } from '../../lib/upload-processor'
 import { planImports, type ImportGroup, type ImportTarget } from '../../lib/upload-plan'
 import { suggestedAccountName, type StatementIdentity } from '../../lib/statement-identify'
@@ -16,7 +17,7 @@ import { Card } from '../shared/Card'
 import { ConfirmDialog } from '../shared/ConfirmDialog'
 import { ProgressBar } from '../shared/ProgressBar'
 import { useToast } from '../../hooks/useToast'
-import type { Account, AccountType } from '../../lib/types'
+import type { Account, AccountType, Upload } from '../../lib/types'
 
 const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#06B6D4']
 
@@ -51,6 +52,7 @@ export function UploadPage() {
   const [progress, setProgress] = useState<StepProgress | null>(null)
   const [completed, setCompleted] = useState<CompletedUpload[]>([])
   const [confirmClear, setConfirmClear] = useState(false)
+  const [uploadToDelete, setUploadToDelete] = useState<Upload | null>(null)
   const { toast } = useToast()
 
   // Manual assets (house, vehicles, …) have no statements, so they're never
@@ -234,6 +236,22 @@ export function UploadPage() {
     toast('All data cleared')
   }
 
+  const accountNameOf = (accountId: number) =>
+    accounts.find((a) => a.id === accountId)?.name ?? 'a deleted account'
+
+  const handleDeleteUpload = async () => {
+    const u = uploadToDelete
+    if (!u) return
+    setUploadToDelete(null)
+    const res = await deleteUpload(u.id!)
+    toast(
+      `Removed ${u.filename} — ${res.removedTransactions} transaction${res.removedTransactions !== 1 ? 's' : ''} deleted` +
+        (res.anchorOutcome === 'reset'
+          ? `. ${accountNameOf(u.accountId)}'s balance needs re-checking — see Home.`
+          : '')
+    )
+  }
+
   const handleRejectedFiles = (names: string[]) => {
     const label = names.length === 1 ? `"${names[0]}"` : `${names.length} of those files`
     toast(
@@ -335,30 +353,40 @@ export function UploadPage() {
 
         {recentUploads.length > 0 && phase === 'idle' && (
           <div>
-            <h3 className="text-text-secondary text-xs font-medium mb-2 flex items-center gap-1.5">
-              <Clock size={12} />
-              Recent Uploads
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-text-secondary text-xs font-medium flex items-center gap-1.5">
+                <Clock size={12} />
+                Recent Uploads
+              </h3>
+              <span className="text-text-muted text-[10px]">swipe left to undo one</span>
+            </div>
             <div className="space-y-2">
               {recentUploads.map((u) => (
-                <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl bg-bg-card border border-border">
-                  <FileText size={16} className="text-text-muted flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-text-primary text-xs truncate">{u.filename}</p>
-                    <p className="text-text-muted text-[10px]">
-                      {u.transactionCount} transactions
-                      {u.periodStart && u.periodEnd
-                        ? ` · covers ${format(u.periodStart, 'MMM d')} – ${format(u.periodEnd, 'MMM d, yyyy')}`
-                        : ` · ${format(u.uploadedAt, 'MMM d, yyyy')}`}
-                    </p>
-                  </div>
-                  <CheckCircle size={14} className="text-income flex-shrink-0" />
-                </div>
+                <RecentUploadRow
+                  key={u.id}
+                  upload={u}
+                  accountName={accountNameOf(u.accountId)}
+                  onDelete={() => setUploadToDelete(u)}
+                />
               ))}
             </div>
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!uploadToDelete}
+        title="Undo this upload?"
+        message={
+          uploadToDelete
+            ? `This deletes the ${uploadToDelete.transactionCount} transactions that "${uploadToDelete.filename}" put into ${accountNameOf(uploadToDelete.accountId)} — as if it was never imported. Everything from your other uploads stays exactly as it is.`
+            : ''
+        }
+        confirmLabel="Delete Upload"
+        variant="danger"
+        onConfirm={handleDeleteUpload}
+        onCancel={() => setUploadToDelete(null)}
+      />
 
       <ConfirmDialog
         open={confirmClear}
@@ -369,6 +397,61 @@ export function UploadPage() {
         onConfirm={handleClearAll}
         onCancel={() => setConfirmClear(false)}
       />
+    </div>
+  )
+}
+
+const SWIPE_REVEAL = 72
+
+/**
+ * A Recent Uploads row that swipes left to reveal Undo — the escape hatch for
+ * "that went into the wrong account". Deleting goes through a ConfirmDialog,
+ * so an accidental swipe can't destroy anything.
+ */
+function RecentUploadRow({
+  upload,
+  accountName,
+  onDelete,
+}: {
+  upload: Upload
+  accountName: string
+  onDelete: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="relative overflow-hidden rounded-xl">
+      <button
+        onClick={onDelete}
+        tabIndex={open ? 0 : -1}
+        aria-hidden={!open}
+        className="absolute inset-y-0 right-0 flex items-center justify-center bg-expense text-white"
+        style={{ width: SWIPE_REVEAL }}
+        aria-label={`Undo upload ${upload.filename}`}
+      >
+        <Trash2 size={16} />
+      </button>
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -SWIPE_REVEAL, right: 0 }}
+        dragElastic={0.05}
+        animate={{ x: open ? -SWIPE_REVEAL : 0 }}
+        onDragEnd={(_, info) => setOpen(info.offset.x < -SWIPE_REVEAL / 2)}
+        onClick={() => open && setOpen(false)}
+        className="relative flex items-center gap-3 p-3 rounded-xl bg-bg-card border border-border"
+      >
+        <FileText size={16} className="text-text-muted flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-text-primary text-xs truncate">{upload.filename}</p>
+          <p className="text-text-muted text-[10px] truncate">
+            {upload.transactionCount} transactions → {accountName}
+            {upload.periodStart && upload.periodEnd
+              ? ` · ${format(upload.periodStart, 'MMM d')} – ${format(upload.periodEnd, 'MMM d, yyyy')}`
+              : ` · ${format(upload.uploadedAt, 'MMM d, yyyy')}`}
+          </p>
+        </div>
+        <CheckCircle size={14} className="text-income flex-shrink-0" />
+      </motion.div>
     </div>
   )
 }
