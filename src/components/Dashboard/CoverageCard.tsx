@@ -17,7 +17,9 @@ export function CoverageCard() {
 
   const data = useLiveQuery(async () => {
     const [txns, accounts] = await Promise.all([db.transactions.toArray(), db.accounts.toArray()])
-    const labels = accounts.flatMap((a) => [a.name, a.institution].filter(Boolean) as string[])
+    const labels = accounts.flatMap(
+      (a) => [a.name, a.institution, a.lastFour ? `••${a.lastFour}` : null].filter(Boolean) as string[]
+    )
     return analyzeCoverage(txns, labels)
   })
 

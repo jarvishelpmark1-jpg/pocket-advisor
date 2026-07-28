@@ -1,7 +1,7 @@
 import type { Transaction } from './types'
 
 /** Account type we can confidently infer for a spoke from its payments. */
-export type SuggestionType = 'credit' | 'loan' | 'checking'
+export type SuggestionType = 'credit' | 'loan' | 'savings' | 'checking'
 
 export interface ImportSuggestion {
   label: string
@@ -13,6 +13,10 @@ export interface ImportSuggestion {
    * stays correct from day one. Falls back to 'checking' when unsure.
    */
   type: SuggestionType
+  /** the most recent raw bank line behind this suggestion — so the user can
+   * recognize what it actually is instead of guessing from a scrubbed label */
+  sample: string
+  lastSeen: Date
 }
 
 // Outflows that represent money leaving for ANOTHER of your accounts — a card
@@ -32,28 +36,59 @@ function looksLikeSpokePayment(t: Transaction): boolean {
 
 const CREDIT_PATTERN = /\bCREDIT\s*CARD\b|\bCARD\s*(PYMT|PMT|PAYMENT)\b|\bCC\s*PAYMENT\b/i
 const LOAN_PATTERN = /\bLOAN\b|\bMORTGAGE\b|\bAUTO\s*(PAY|LOAN)\b/i
+const SAVINGS_PATTERN = /\bSAV(INGS)?\b/i
 
 // Strength order so a group settles on its most specific (and most net-worth-
 // relevant) type: a credit-card payment wins over a generic transfer.
-const TYPE_RANK: Record<SuggestionType, number> = { credit: 2, loan: 1, checking: 0 }
+const TYPE_RANK: Record<SuggestionType, number> = { credit: 3, loan: 2, savings: 1, checking: 0 }
 
 function inferType(t: Transaction): SuggestionType {
   const text = `${t.description} ${t.originalDescription}`
   if (CREDIT_PATTERN.test(text)) return 'credit'
   if (LOAN_PATTERN.test(text)) return 'loan'
+  if (SAVINGS_PATTERN.test(text)) return 'savings'
   return 'checking'
 }
 
+// "Online Banking transfer to CHK 5678" — the digits are the destination
+// account's last four, the single most identifying thing on the line.
+const DEST_DIGITS =
+  /\b(CHK|CHECKING|SAV|SAVINGS|MMA|ACCT|ACCOUNT|CARD|LOAN)\s*#?\s*[X*]*\s*(\d{3,4})\b/i
+
+// Bank shorthand → words a human recognizes.
+const SHORT_WORDS: Record<string, string> = {
+  CHK: 'Checking',
+  CHECKING: 'Checking',
+  SAV: 'Savings',
+  SAVINGS: 'Savings',
+  MMA: 'Money Market',
+  ACCT: 'Account',
+}
+
 function labelFor(t: Transaction): string {
-  if (t.merchantName) return t.merchantName
-  const cleaned = t.description
-    .toUpperCase()
-    .replace(/\b(ONLINE|WEB|MOBILE|ELECTRONIC|RECURRING|AUTO|AUTHORIZED|PMT|PYMT|PAYMENT|TRANSFER|TO|FROM|ACH|XFER)\b/g, ' ')
-    .replace(/[^A-Z ]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  const words = cleaned.split(' ').filter(Boolean).slice(0, 2).join(' ')
-  return words || 'Other transfer'
+  const dest = `${t.description} ${t.originalDescription}`.match(DEST_DIGITS)
+  let base: string
+  if (t.merchantName) {
+    base = t.merchantName
+  } else {
+    const cleaned = t.description
+      .toUpperCase()
+      .replace(/\b(ONLINE|BANKING|WEB|MOBILE|ELECTRONIC|RECURRING|AUTO|AUTHORIZED|PMT|PYMT|PAYMENT|TRANSFER|TO|FROM|ACH|XFER|CONFIRMATION)\b/g, ' ')
+      .replace(/[^A-Z ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    base = cleaned
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => SHORT_WORDS[w] ?? w)
+      .join(' ')
+  }
+  if (dest) {
+    if (!base || base === 'Account') base = SHORT_WORDS[dest[1].toUpperCase()] ?? 'Account'
+    return `${base} ••${dest[2]}`
+  }
+  return base || 'Other transfer'
 }
 
 /**
@@ -86,13 +121,25 @@ export function suggestSpokeImports(
     if (existing.some((e) => labelsOverlap(e, label))) continue
 
     const ty = inferType(t)
+    const sample = t.originalDescription || t.description
     const g = groups.get(label)
     if (g) {
       g.total += Math.abs(t.amount)
       g.count += 1
       if (TYPE_RANK[ty] > TYPE_RANK[g.type]) g.type = ty
+      if (t.date.getTime() > g.lastSeen.getTime()) {
+        g.lastSeen = t.date
+        g.sample = sample
+      }
     } else {
-      groups.set(label, { label, total: Math.abs(t.amount), count: 1, type: ty })
+      groups.set(label, {
+        label,
+        total: Math.abs(t.amount),
+        count: 1,
+        type: ty,
+        sample,
+        lastSeen: t.date,
+      })
     }
   }
 

@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Sparkles } from 'lucide-react'
+import { format } from 'date-fns'
 import { db } from '../../lib/db'
 import { suggestSpokeImports } from '../../lib/import-suggestions'
 import { formatCurrency } from '../../lib/formatters'
@@ -10,7 +11,11 @@ export function NextImportsCard() {
   const navigate = useNavigate()
   const suggestions = useLiveQuery(async () => {
     const [txns, accounts] = await Promise.all([db.transactions.toArray(), db.accounts.toArray()])
-    const labels = accounts.flatMap((a) => [a.name, a.institution].filter(Boolean) as string[])
+    // Names, institutions, AND last-fours: a transfer to "CHK 5678" must not
+    // be suggested when the account ending 5678 is already imported.
+    const labels = accounts.flatMap(
+      (a) => [a.name, a.institution, a.lastFour ? `••${a.lastFour}` : null].filter(Boolean) as string[]
+    )
     return suggestSpokeImports(txns, labels)
   })
 
@@ -37,7 +42,10 @@ export function NextImportsCard() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-text-primary text-xs font-medium truncate">{s.label}</p>
-              <p className="text-text-muted text-[10px]">{s.count} payment{s.count !== 1 ? 's' : ''} seen</p>
+              <p className="text-text-muted text-[10px] truncate">
+                {s.count} payment{s.count !== 1 ? 's' : ''} · last {format(s.lastSeen, 'MMM d')} ·{' '}
+                “{s.sample}”
+              </p>
             </div>
             <span className="text-text-secondary text-xs font-mono flex-shrink-0">{formatCurrency(s.total, true)}</span>
           </button>

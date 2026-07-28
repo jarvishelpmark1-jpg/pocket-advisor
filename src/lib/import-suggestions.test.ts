@@ -67,6 +67,40 @@ describe('suggestSpokeImports', () => {
     expect(suggestSpokeImports(txns, ['BoA'])).toHaveLength(1)
   })
 
+  it('keeps the destination last-four so the user can recognize the account', () => {
+    // BofA wording: without the digits this used to label as the useless "BANKING CHK"
+    const txns = [
+      txn({ amount: -500, description: 'Online Banking transfer to CHK 5678', categoryId: 'transfer' }),
+    ]
+    const s = suggestSpokeImports(txns)
+    expect(s[0].label).toBe('Checking ••5678')
+    expect(s[0].sample).toBe('Online Banking transfer to CHK 5678')
+  })
+
+  it('splits transfers to two different accounts into two suggestions', () => {
+    const txns = [
+      txn({ amount: -500, description: 'Online Banking transfer to CHK 5678', categoryId: 'transfer' }),
+      txn({ amount: -300, description: 'Online Banking transfer to CHK 3421', categoryId: 'transfer' }),
+    ]
+    expect(suggestSpokeImports(txns)).toHaveLength(2)
+  })
+
+  it('drops a suggestion whose last-four matches an imported account', () => {
+    const txns = [
+      txn({ amount: -500, description: 'Online Banking transfer to CHK 5678', categoryId: 'transfer' }),
+    ]
+    expect(suggestSpokeImports(txns, ['Her Checking', '••5678'])).toEqual([])
+  })
+
+  it('infers savings for a savings transfer so the deep link creates the right type', () => {
+    const txns = [
+      txn({ amount: -400, description: 'TRANSFER TO SAV 9012', categoryId: 'transfer' }),
+    ]
+    const s = suggestSpokeImports(txns)
+    expect(s[0].label).toBe('Savings ••9012')
+    expect(s[0].type).toBe('savings')
+  })
+
   it('ignores regular spending', () => {
     const txns = [txn({ amount: -60, description: 'WHOLE FOODS', categoryId: 'groceries' })]
     expect(suggestSpokeImports(txns)).toEqual([])
