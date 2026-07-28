@@ -9,6 +9,7 @@
 import { db } from './db'
 import { reconcileTransfers } from './reconcile'
 import { backfillNetWorthHistory } from './analytics'
+import type { Upload } from './types'
 
 const DAY = 24 * 60 * 60 * 1000
 // A statement's close can precede its period only slightly…
@@ -63,9 +64,7 @@ export async function deleteUpload(uploadId: number): Promise<DeleteUploadResult
   return { removedTransactions: txns.length, unpaired, anchorOutcome }
 }
 
-async function revertAnchor(
-  upload: NonNullable<Awaited<ReturnType<typeof db.uploads.get>>>
-): Promise<DeleteUploadResult['anchorOutcome']> {
+async function revertAnchor(upload: Upload): Promise<DeleteUploadResult['anchorOutcome']> {
   const account = await db.accounts.get(upload.accountId)
   if (!account) return 'untouched'
 
