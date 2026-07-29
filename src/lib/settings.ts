@@ -7,6 +7,8 @@ export interface AppSettings {
   hasCompletedOnboarding: boolean
   budgets: Partial<Record<CategoryId, number>>
   monthlyBudget: number
+  /** one-time launch repair: summary rows misread as transactions (see data-repair.ts) */
+  summaryRowCleanupDone: boolean
 }
 
 const STORAGE_KEY = 'pocket-advisor-settings'
@@ -16,6 +18,7 @@ const DEFAULTS: AppSettings = {
   hasCompletedOnboarding: false,
   budgets: {},
   monthlyBudget: 0,
+  summaryRowCleanupDone: false,
 }
 
 export function getSettings(): AppSettings {

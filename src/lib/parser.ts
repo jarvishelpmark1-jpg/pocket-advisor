@@ -142,6 +142,17 @@ function detectColumns(headers: string[], rows: string[][]): ColumnMapping | nul
   }
 }
 
+// Bank CSVs sometimes include summary lines ("Beginning balance as of 01/01",
+// "Ending balance") as data rows; imported, one becomes a five-figure fake
+// income transaction that poisons every income and savings number. "New
+// balance" is deliberately NOT matched — New Balance is a shoe brand that
+// shows up as a legitimate merchant.
+const SUMMARY_ROW = /^(beginning|opening|ending|closing|previous|total)\s+balance\b/i
+
+export function isSummaryRowDescription(desc: string): boolean {
+  return SUMMARY_ROW.test(desc.trim())
+}
+
 export function parseCSV(content: string): ParseResult {
   const result = Papa.parse(content, {
     skipEmptyLines: true,
@@ -179,6 +190,7 @@ export function parseCSV(content: string): ParseResult {
 
     const description = (row[mapping.description] || '').trim()
     if (!description) continue
+    if (isSummaryRowDescription(description)) continue
 
     let amount: number | null = null
 
@@ -241,7 +253,7 @@ function parseWithoutHeaders(rows: string[][]): ParsedTransaction[] {
     const amount = parseAmount(row[amountIdx])
     const description = row[descIdx].trim()
 
-    if (date && amount !== null && description) {
+    if (date && amount !== null && description && !isSummaryRowDescription(description)) {
       transactions.push({ date, description, amount })
     }
   }

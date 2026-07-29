@@ -20,6 +20,7 @@ function input(over: Partial<BriefingInput> = {}): BriefingInput {
     netWorthNow: 62000,
     liquidBalance: 40000,
     cardDebt: 0,
+    cardCarriesInterest: false,
     loanDebt: 250000,
     incomeSources: [
       { source: 'Business', total: 30000 },
@@ -49,10 +50,17 @@ describe('buildBriefing', () => {
     expect(keep?.text).toMatch(/kept 2\d% of everything/)
   })
 
-  it('puts card debt ahead of the house fund and aims the closing move at it', () => {
-    const ps = buildBriefing(input({ cardDebt: 6200 }))
+  it('treats interest-charging card debt as the emergency and aims the move at it', () => {
+    const ps = buildBriefing(input({ cardDebt: 6200, cardCarriesInterest: true }))
     expect(byId(ps, 'card-debt')?.text).toContain('ahead of the house fund')
     expect(byId(ps, 'closing-move')?.text).toContain('cards')
+  })
+
+  it('never lectures a transactor — a full-autopay balance is float, not debt', () => {
+    const ps = buildBriefing(input({ cardDebt: 4272, cardCarriesInterest: false }))
+    expect(byId(ps, 'card-debt')).toBeUndefined()
+    expect(byId(ps, 'closing-move')?.text).not.toContain('cards')
+    expect(byId(ps, 'card-float')?.text).toContain('float, not debt')
   })
 
   it('aims the closing move at the cushion when cards are clear but runway is thin', () => {
@@ -117,7 +125,7 @@ describe('buildBriefing', () => {
   })
 
   it('keeps the briefing tight — opening + at most 4 body paragraphs + one move', () => {
-    const ps = buildBriefing(input({ cardDebt: 5000, dataIssueCount: 1 }))
+    const ps = buildBriefing(input({ cardDebt: 5000, cardCarriesInterest: true, dataIssueCount: 1 }))
     // caveat + opening + ≤4 body + closing
     expect(ps.length).toBeLessThanOrEqual(7)
   })

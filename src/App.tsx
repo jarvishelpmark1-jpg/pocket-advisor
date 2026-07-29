@@ -10,7 +10,7 @@ import { UpdatePrompt } from './components/shared/UpdatePrompt'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { getSettings } from './lib/settings'
 import { hasPin } from './lib/applock'
-import { backfillNetWorthHistory } from './lib/analytics'
+import { runStartupRepairs } from './lib/data-repair'
 
 const UploadPage = lazy(() => import('./components/Upload/Upload').then(m => ({ default: m.UploadPage })))
 const ReviewPage = lazy(() => import('./components/Review/Review').then(m => ({ default: m.ReviewPage })))
@@ -39,11 +39,12 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
 
-  // Record/refresh net-worth snapshots on launch. Covers month rollover (first
-  // open in a new month writes that month) and seeds the history chart. No-op
-  // until there are accounts; upsert makes the dev StrictMode double-run safe.
+  // Launch-time self-heals (remove summary rows past parsers let in) plus the
+  // net-worth snapshot refresh. Covers month rollover (first open in a new
+  // month writes that month) and seeds the history chart. No-op until there
+  // are accounts; idempotent, so the dev StrictMode double-run is safe.
   useEffect(() => {
-    if (onboarded) void backfillNetWorthHistory()
+    if (onboarded) void runStartupRepairs()
   }, [onboarded])
 
   if (!onboarded) {

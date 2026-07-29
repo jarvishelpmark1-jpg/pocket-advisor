@@ -107,6 +107,32 @@ describe('processUpload sign normalization', () => {
   })
 })
 
+describe('processUpload summary-row filtering', () => {
+  it('never imports a statement summary line as a transaction', async () => {
+    const id = await addAccount('checking')
+    const result = await processUpload(
+      csvFile('boa.csv', [
+        '01/01/2026,Beginning balance as of 01/01/2026,32370.00',
+        '01/05/2026,GUSTO PAYROLL,2000.00',
+        '01/31/2026,Ending balance,34370.00',
+      ]),
+      id,
+    )
+    expect(result.total).toBe(1)
+    const txns = await db.transactions.where('accountId').equals(id).toArray()
+    expect(txns.map((t) => t.description)).toEqual(['GUSTO PAYROLL'])
+  })
+
+  it('still imports a purchase from the New Balance shoe store', async () => {
+    const id = await addAccount('credit')
+    const result = await processUpload(
+      csvFile('card.csv', ['01/12/2026,NEW BALANCE #123 BOSTON MA,-129.99']),
+      id,
+    )
+    expect(result.total).toBe(1)
+  })
+})
+
 describe('processUpload duplicate handling', () => {
   it('keeps identical same-day transactions listed twice in one file', async () => {
     const id = await addAccount('checking')

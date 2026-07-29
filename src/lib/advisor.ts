@@ -46,6 +46,13 @@ export interface BriefingInput {
   netWorthNow: number | null
   liquidBalance: number
   cardDebt: number
+  /**
+   * Whether interest charges actually appear on the cards. A balance that
+   * autopays in full every month is float — a payment timing artifact, not
+   * debt — and lecturing a lifelong full-payer about "card debt" is exactly
+   * the kind of wrong-footed advice that breaks trust.
+   */
+  cardCarriesInterest: boolean
   loanDebt: number
   /** whole-range income by source, largest first */
   incomeSources: { source: string; total: number }[]
@@ -220,14 +227,23 @@ export function buildBriefing(input: BriefingInput): AdvisorParagraph[] {
     }
   }
 
-  // --- card debt: the guaranteed-return problem ---
-  if (input.cardDebt > 250) {
+  // --- cards: revolving debt is an emergency; float is a tool ---
+  if (input.cardDebt > 250 && input.cardCarriesInterest) {
     const monthlyDrag = (input.cardDebt * 0.22) / 12
     body.push({
       id: 'card-debt',
       tone: 'move',
       priority: 92,
-      text: `The cards are carrying ${f(input.cardDebt)}. At typical card rates that’s roughly ${f(monthlyDrag)} a month working against you — killing it is the highest guaranteed return available to you anywhere. It comes ahead of the house fund; the math isn’t close.`,
+      text: `The cards are carrying ${f(input.cardDebt)} — and interest is actually hitting, roughly ${f(monthlyDrag)} a month working against you. Killing it is the highest guaranteed return available to you anywhere. It comes ahead of the house fund; the math isn’t close.`,
+    })
+  } else if (input.cardDebt > 0 && !input.cardCarriesInterest) {
+    // Outranks minor wins: the user can SEE a balance on their card — telling
+    // them it's fine is worth more than a third compliment.
+    body.push({
+      id: 'card-float',
+      tone: 'win',
+      priority: 58,
+      text: `The ${f(input.cardDebt)} showing on the cards is float, not debt — you spend, it autopays in full, and I can’t find a single interest charge. That’s exactly how cards should be used; nothing to fix there.`,
     })
   }
 
@@ -281,7 +297,7 @@ export function buildBriefing(input: BriefingInput): AdvisorParagraph[] {
 
   // --- the single move (a good advisor always ends with one) ---
   let move: string
-  if (input.cardDebt > 250) {
+  if (input.cardDebt > 250 && input.cardCarriesInterest) {
     move = `every spare dollar goes at the ${f(input.cardDebt)} on the cards until they’re gone — it’s a guaranteed ~20% return and it frees your whole cash flow`
   } else if (avgExpenses > 0 && input.liquidBalance / avgExpenses < 6) {
     const gap = 6 * avgExpenses - input.liquidBalance
@@ -326,6 +342,9 @@ export async function getBriefing(range: RangeKey): Promise<AdvisorParagraph[]> 
   const liquidBalance = balances
     .filter((b) => ['checking', 'savings', 'money_market'].includes(b.account.type))
     .reduce((s, b) => s + b.current, 0)
+  const creditAccountIds = new Set(
+    balances.filter((b) => b.account.type === 'credit').map((b) => b.account.id!)
+  )
   const cardDebt = balances
     .filter((b) => b.account.type === 'credit')
     .reduce((s, b) => s + Math.max(0, b.current), 0)
@@ -346,6 +365,15 @@ export async function getBriefing(range: RangeKey): Promise<AdvisorParagraph[]> 
     .map(([source, total]) => ({ source, total }))
     .sort((a, b) => b.total - a.total)
 
+  // Revolver or transactor? Interest charges on a card are the tell. A card
+  // that autopays in full shows purchases and payments but never interest.
+  const cardCarriesInterest = txns.some(
+    (t) =>
+      creditAccountIds.has(t.accountId) &&
+      t.amount < 0 &&
+      /\binterest\b/i.test(`${t.description} ${t.originalDescription}`)
+  )
+
   const goals = await db.goals.toArray()
   const house = goals.find((g) => g.kind === 'house')
   // Distinct accounts with problems — the caveat says "N accounts", so a
@@ -359,6 +387,7 @@ export async function getBriefing(range: RangeKey): Promise<AdvisorParagraph[]> 
     netWorthNow: history.length >= 2 ? history[history.length - 1].netWorth : null,
     liquidBalance,
     cardDebt,
+    cardCarriesInterest,
     loanDebt,
     incomeSources,
     houseFund: house
